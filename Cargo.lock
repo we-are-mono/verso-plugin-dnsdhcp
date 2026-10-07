@@ -95,6 +95,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 [[package]]
 name = "verso-plugin"
 version = "0.1.0"
+source = "git+https://github.com/we-are-mono/verso?tag=v0.2.0#30e6feca7db716e4c604d51954a423a376631718"
 dependencies = [
  "serde",
  "serde_json",

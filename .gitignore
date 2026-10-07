@@ -1,0 +1,5 @@
+/target/
+/build/
+
+# Per-machine Makefile overrides (OPENWRT_DIR, KEY, VERSO_REPO_DIR)
+/local.mk

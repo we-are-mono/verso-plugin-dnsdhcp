@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-verso-plugin = { path = "../verso-plugin-sdk" }
+# The plugin SDK lives in the shell's repository, released with it.
+verso-plugin = { git = "https://github.com/we-are-mono/verso", tag = "v0.2.0" }
 
 # The page tests assert on the serialized envelope, which is the contract the
 # shell decodes; serde_json is the only way to look at it.
