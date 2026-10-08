@@ -6,9 +6,17 @@ USE_PROCD=1
 START=93
 STOP=12
 
+USER_ENTRY='verso-plugin-dnsdhcp:x:6011:6000:Verso DNS and DHCP plugin:/var/run/verso:/bin/false'
+
 start_service() {
-	grep -q '^verso-plugin-dnsdhcp:' /etc/passwd 2>/dev/null || \
-		echo 'verso-plugin-dnsdhcp:x:6007:6000:Verso DNS and DHCP plugin:/var/run/verso:/bin/false' >> /etc/passwd
+	# The plugin's own uid, no other plugin's (ADR-007). An entry that says
+	# otherwise is replaced, and the socket the old uid left goes with it: the
+	# sticky runtime directory would not let the new uid remove it.
+	if ! grep -qxF "$USER_ENTRY" /etc/passwd 2>/dev/null; then
+		sed -i '/^verso-plugin-dnsdhcp:/d' /etc/passwd
+		echo "$USER_ENTRY" >> /etc/passwd
+		rm -f /var/run/verso/dnsdhcp.sock
+	fi
 
 	mkdir -p /var/run/verso
 	chown root:verso /var/run/verso
