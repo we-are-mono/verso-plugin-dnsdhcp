@@ -251,11 +251,11 @@ impl State {
         Widget::Table(Table {
             columns: [
                 ("Network", "reference", ColumnWidth::Short),
-                ("State", "status", ColumnWidth::Word),
                 ("Range", "mono", ColumnWidth::Long),
                 ("Leased", "meter", ColumnWidth::Name),
                 ("Lease time", "keyword", ColumnWidth::Short),
                 ("IPv6", "text", ColumnWidth::Word),
+                ("State", "status", ColumnWidth::Word),
                 ("", "actions", ColumnWidth::Short),
             ]
             .into_iter()
@@ -297,12 +297,6 @@ impl State {
                     href: door.clone(),
                     ..TableCell::default()
                 },
-                TableCell {
-                    text: state.into(),
-                    variant: tone.into(),
-                    dot: true,
-                    ..TableCell::default()
-                },
                 quiet(page::mono_cell(&format::range_label(
                     subnet,
                     &pool.start,
@@ -321,6 +315,12 @@ impl State {
                 }),
                 quiet(page::mono_cell(&pool.leasetime)),
                 quiet(page::text_cell(pool.ipv6_words())),
+                TableCell {
+                    text: state.into(),
+                    variant: tone.into(),
+                    dot: true,
+                    ..TableCell::default()
+                },
                 TableCell {
                     actions: vec![TableRowAct {
                         icon: "square-pen".into(),
@@ -925,12 +925,14 @@ ra=server&dhcpv6=server&ra_slaac=1";
             .unwrap();
         assert_eq!(lan["panel"], "/plugins/dnsdhcp/?open=lan");
         assert_eq!(lan["cells"][0]["href"], lan["panel"]);
-        assert_eq!(lan["cells"][2]["text"], "10.0.0.100 – 10.0.0.249");
+        assert_eq!(lan["cells"][1]["text"], "10.0.0.100 – 10.0.0.249");
         // Three of the fixture's leases sit on lan.
-        assert_eq!(lan["cells"][3]["text"], "3");
-        assert_eq!(lan["cells"][3]["fill"], 2);
-        assert_eq!(lan["cells"][4]["text"], "12h");
-        assert_eq!(lan["cells"][5]["text"], "SLAAC and DHCPv6");
+        assert_eq!(lan["cells"][2]["text"], "3");
+        assert_eq!(lan["cells"][2]["fill"], 2);
+        assert_eq!(lan["cells"][3]["text"], "12h");
+        assert_eq!(lan["cells"][4]["text"], "SLAAC and DHCPv6");
+        // The state reads last, beside the acts it explains.
+        assert_eq!(sections(&page)[0]["children"][0]["columns"][5]["kind"], "status");
         // A pool that states no offsets still shows the span dnsmasq would use.
         let guest = rows
             .as_array()
@@ -938,7 +940,7 @@ ra=server&dhcpv6=server&ra_slaac=1";
             .iter()
             .find(|r| r["id"] == "guest")
             .unwrap();
-        assert_eq!(guest["cells"][2]["text"], "10.0.20.100 – 10.0.20.249");
+        assert_eq!(guest["cells"][1]["text"], "10.0.20.100 – 10.0.20.249");
         // The uplink is a client here, and says nothing else.
         let wan = rows
             .as_array()
@@ -946,8 +948,8 @@ ra=server&dhcpv6=server&ra_slaac=1";
             .iter()
             .find(|r| r["id"] == "wan")
             .unwrap();
-        assert_eq!(wan["cells"][1]["text"], "Client — uplink");
-        assert_eq!(wan["cells"][2]["text"], "—");
+        assert_eq!(wan["cells"][5]["text"], "Client — uplink");
+        assert_eq!(wan["cells"][1]["text"], "—");
     }
 
     #[test]
