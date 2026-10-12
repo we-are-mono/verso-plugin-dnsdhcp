@@ -37,7 +37,8 @@ apk_arch_amd64 := x86_64
 APK_GOARCH ?= arm64
 APK_ARCH   := $(apk_arch_$(APK_GOARCH))
 
-APK_DIR     := $(BUILDDIR)/apk
+# Each arch packages under a directory of its own, so one never overwrites another.
+APK_DIR     := $(BUILDDIR)/apk/$(APK_ARCH)
 APK_PAYLOAD := $(APK_DIR)/pkg
 APK_OUT     := $(APK_DIR)/$(NAME)-$(VER).apk
 POSTINST    := packaging/post-install.sh
