@@ -199,34 +199,15 @@ impl State {
             Open::Reservation(Some(section), drawer) => (None, Some((section, drawer)), None),
             Open::Reservation(None, drawer) => (None, None, Some(drawer)),
         };
-        let reservations = Widget::Section(verso_plugin::SectionWidget {
-            title: "Reservations".into(),
-            meta: self.model.hosts.len().to_string(),
-            meta_position: "inline".into(),
-            hairline: true,
-            children: vec![hosts::table(&self.model, host_open)],
-            ..Default::default()
-        });
         Envelope::page(
             TITLE,
             Widget::stack(vec![
-                section(
-                    "Servers",
-                    "",
-                    &self.servers.len().to_string(),
-                    self.servers_table(server_open),
-                ),
-                reservations,
-                section(
-                    "Leases",
-                    "",
-                    &self.leases.all().len().to_string(),
-                    leases::table(&self.model, &self.leases),
-                ),
+                section("Servers", "", self.servers_table(server_open)),
+                section("Reservations", "", hosts::table(&self.model, host_open)),
+                section("Leases", "", leases::table(&self.model, &self.leases)),
                 section(
                     "Settings",
                     "These apply to every server above.",
-                    "",
                     self.settings_form(settings),
                 ),
             ]),
@@ -803,12 +784,10 @@ fn range_words(subnet: Option<Subnet>, pool: &Pool) -> String {
     }
 }
 
-fn section(title: &str, lede: &str, meta: &str, body: Widget) -> Widget {
+fn section(title: &str, lede: &str, body: Widget) -> Widget {
     Widget::Section(verso_plugin::SectionWidget {
         title: title.into(),
         sub: lede.into(),
-        meta: meta.into(),
-        meta_position: "inline".into(),
         hairline: true,
         children: vec![body],
         ..Default::default()
