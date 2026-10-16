@@ -85,7 +85,8 @@ mod tests {
         let rows = body["rows"].as_array().expect("rows");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["group"]["label"], "Files");
-        assert_eq!(rows[0]["group"]["chain"], "0");
+        // A lane never counts itself; the table says there is nothing in it.
+        assert!(rows[0]["group"].get("chain").is_none());
         assert!(rows[0]["cells"].as_array().is_none_or(Vec::is_empty));
         assert_eq!(body["empty_text"], "No custom option files");
     }
