@@ -174,6 +174,7 @@ fn row(model: &Dnsdhcp, host: &Host, drawer: Option<RowDrawer>) -> TableRow {
                     confirm: "The device keeps its address until its lease runs out, then gets \
                               whichever one is free."
                         .into(),
+                    confirm_cancel: "Keep reservation".into(),
                     ..TableRowAct::default()
                 }],
                 ..TableCell::default()
@@ -581,6 +582,8 @@ mod tests {
         assert!(remove["confirm_title"]
             .as_str()
             .is_some_and(|t| !t.is_empty()));
+        // The way back names what it keeps.
+        assert_eq!(remove["confirm_cancel"], "Keep reservation");
         // A listing with nothing open carries no rendered panel.
         assert!(rows.iter().all(|row| row.get("drawer").is_none()));
     }

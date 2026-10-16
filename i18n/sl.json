@@ -206,6 +206,7 @@
   "An unnamed device": "Neimenovana naprava",
   "IPv6 suffix": "Pripona IPv6",
   "Remove the reservation for %s?": "Odstranim rezervacijo za %s?",
+  "Keep reservation": "Ohrani rezervacijo",
   "The device keeps its address until its lease runs out, then gets whichever one is free.": "Naprava obdrži naslov, dokler ne poteče zakup, nato dobi katerega koli prostega.",
   "Name": "Ime",
   "Also answers to this name on the local network.": "V lokalnem omrežju se odziva tudi na to ime.",
