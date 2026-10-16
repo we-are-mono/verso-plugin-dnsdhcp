@@ -344,7 +344,7 @@ fn render(r: &Request, s: &Settings, e: &Errors) -> Envelope {
                 "upstream",
                 "Upstream servers",
                 "server",
-                "1.1.1.1",
+                "e.g. 1.1.1.1",
                 "dnsserver",
             ),
             s.check("peerdns", "Use the servers the ISP hands out", "peerdns"),
@@ -355,14 +355,14 @@ fn render(r: &Request, s: &Settings, e: &Errors) -> Envelope {
         "local-names",
         if s.resolver {
             vec![
-                s.field(e, "domain", "Local domain", "lan"),
+                s.field(e, "domain", "Local domain", "e.g. lan"),
                 s.flag("expandhosts"),
                 s.rows(
                     e,
                     "address",
                     "Extra hostnames",
                     "address",
-                    "/nas.lan/10.0.0.12",
+                    "e.g. /nas.lan/10.0.0.12",
                     "dnsaddress",
                 ),
                 s.flag("rebind_protection"),
@@ -442,7 +442,7 @@ fn render(r: &Request, s: &Settings, e: &Errors) -> Envelope {
                 "forwarding",
                 "Send these domains to a specific server",
                 "server",
-                "/corp.example/10.1.0.53",
+                "e.g. /corp.example/10.1.0.53",
                 "dnsforward",
             )],
         ));
@@ -466,7 +466,7 @@ fn render(r: &Request, s: &Settings, e: &Errors) -> Envelope {
             "behaviour",
             vec![
                 s.flag("localservice"),
-                s.field(e, "cachesize", "Cache size", "150"),
+                s.field(e, "cachesize", "Cache size", "default 150"),
                 s.flag("logqueries"),
             ],
         ));
