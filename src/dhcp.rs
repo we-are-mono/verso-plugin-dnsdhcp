@@ -97,7 +97,7 @@ const GONE: &str = "That isn’t in the config any more, so there was nothing to
 /// no row yet — when an address (New, or a lease's Reserve) asks for one.
 fn new_reservation(blank: Option<RowDrawer>) -> HeadingAct {
     HeadingAct {
-        label: "New reservation".into(),
+        label: "Add reservation".into(),
         href: page::open_href(NEW),
         icon: "plus".into(),
         opens_panel: true,
@@ -1089,14 +1089,14 @@ ra=server&dhcpv6=server&ra_slaac=1";
         // Reservations section. A still page is scrolled and found in with the
         // browser's own find, so nothing narrows it.
         let page = read("");
-        assert_eq!(page["act"]["label"], "New reservation");
+        assert_eq!(page["act"]["label"], "Add reservation");
         assert_eq!(page["act"]["href"], "/plugins/dnsdhcp/?open=new");
         assert_eq!(page["act"]["opens_panel"], true);
         assert!(
             find(&page, &|v| v["type"] == "actionbar").is_none(),
             "{page}"
         );
-        assert!(find(&page, &|v| v["label"] == "New reservation"
+        assert!(find(&page, &|v| v["label"] == "Add reservation"
             && v["type"] == "link")
         .is_none());
         // An address asking for a new one arrives with its panel open.

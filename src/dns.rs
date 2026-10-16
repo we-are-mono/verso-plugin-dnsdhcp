@@ -499,7 +499,7 @@ fn render(r: &Request, s: &Settings, e: &Errors) -> Envelope {
                 // otherwise; an option of another config is simply not marked.
                 Widget::Form {
                     style: "settings".into(),
-                    submit: "Save settings".into(),
+                    submit: "Save DNS settings".into(),
                     note: String::new(),
                     target: String::new(),
                     // Each refusal rides its own field; the shell's
