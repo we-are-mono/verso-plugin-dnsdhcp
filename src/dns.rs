@@ -124,7 +124,9 @@ impl Settings {
         values.insert("adblock".into(), yes(adblock.flag("adb_enabled", false)));
         // Which program answers on each local port, where the helper said:
         // what a 127.0.0.1#port upstream really is.
-        let listeners = state.and_then(|s| s.get("listeners")).and_then(Value::as_object);
+        let listeners = state
+            .and_then(|s| s.get("listeners"))
+            .and_then(Value::as_object);
         let holder = |port: &str| listeners.and_then(|l| l.get(port)).and_then(Value::as_str);
         let filter = daemon.list("server").iter().find_map(|server| {
             let port = local_port(server)?;
@@ -870,15 +872,30 @@ mod tests {
         ] {
             let fields = section_children(&body, anchor);
             let notice = &fields[0];
-            assert_eq!((notice["type"].as_str(), notice["variant"].as_str()), (Some("callout"), Some("info")), "{anchor}");
+            assert_eq!(
+                (notice["type"].as_str(), notice["variant"].as_str()),
+                (Some("callout"), Some("info")),
+                "{anchor}"
+            );
             assert_eq!(notice["title"], title, "{anchor}");
             let words = notice["body"].as_str().unwrap_or_default();
             assert!(words.contains("Installing adds"), "{title}: {words}");
-            assert!(words.contains("off until you turn it on"), "{title}: {words}");
+            assert!(
+                words.contains("off until you turn it on"),
+                "{title}: {words}"
+            );
             let act = &notice["acts"][0];
-            assert_eq!((act["type"].as_str(), act["style"].as_str()), (Some("link"), Some("secondary")), "{anchor}");
+            assert_eq!(
+                (act["type"].as_str(), act["style"].as_str()),
+                (Some("link"), Some("secondary")),
+                "{anchor}"
+            );
             assert_eq!(act["label"], format!("Install {package}"), "{title}");
-            assert_eq!(act["href"], format!("/system/packages/package?name={package}"), "{title}");
+            assert_eq!(
+                act["href"],
+                format!("/system/packages/package?name={package}"),
+                "{title}"
+            );
             assert_eq!(act["icon"], "download", "{title}");
             assert_eq!(act["panel"], true, "{title}");
         }
@@ -895,8 +912,10 @@ mod tests {
             "dhcp":{"main":{".name":"main",".type":"dnsmasq","server":["127.0.0.1#5053"],"noresolv":"1"}},
             "https-dns-proxy":{"resolver":{".name":"resolver",".type":"https-dns-proxy","listen_port":"5053"}}
         }));
-        r.ubus = Ubus::from_value(json!({"dnsState":{"resolver":true,"doh":true,"adblock":true,
-            "listeners":{"5053":"AdGuardHome"}}}));
+        r.ubus = Ubus::from_value(
+            json!({"dnsState":{"resolver":true,"doh":true,"adblock":true,
+            "listeners":{"5053":"AdGuardHome"}}}),
+        );
         let body = serde_json::to_value(page(&r)).expect("serialize");
         for anchor in ["privacy", "blocking"] {
             let fields = section_children(&body, anchor);
@@ -904,16 +923,25 @@ mod tests {
             assert_eq!(fields[0]["title"], "Handled by AdGuard Home", "{anchor}");
             assert_eq!(fields[0]["variant"], "info", "{anchor}");
             assert!(
-                !fields.iter().any(|w| w["name"] == "encrypted" || w["name"] == "adblock"),
+                !fields
+                    .iter()
+                    .any(|w| w["name"] == "encrypted" || w["name"] == "adblock"),
                 "{anchor} offers nothing the resolver decides: {fields:?}"
             );
         }
         let rows = statuses(&body);
-        assert!(!rows.iter().any(|w| w["act"].as_str().is_some_and(|a| a.starts_with("Install"))), "{rows:?}");
+        assert!(
+            !rows
+                .iter()
+                .any(|w| w["act"].as_str().is_some_and(|a| a.starts_with("Install"))),
+            "{rows:?}"
+        );
         assert_eq!(Settings::read(&r).v("encrypted"), "0");
         // https-dns-proxy holding its own port is encryption.
-        r.ubus = Ubus::from_value(json!({"dnsState":{"resolver":true,"doh":true,"adblock":false,
-            "listeners":{"5053":"https-dns-proxy"}}}));
+        r.ubus = Ubus::from_value(
+            json!({"dnsState":{"resolver":true,"doh":true,"adblock":false,
+            "listeners":{"5053":"https-dns-proxy"}}}),
+        );
         assert_eq!(Settings::read(&r).v("encrypted"), "1");
     }
 
@@ -924,17 +952,29 @@ mod tests {
     fn another_program_on_port_53_is_the_front_door() {
         let front = |listeners: Value| {
             let mut r = request();
-            r.ubus = Ubus::from_value(json!({"dnsState":{"resolver":true,"doh":false,"adblock":false,"listeners":listeners}}));
+            r.ubus = Ubus::from_value(
+                json!({"dnsState":{"resolver":true,"doh":false,"adblock":false,"listeners":listeners}}),
+            );
             let body = serde_json::to_value(page(&r)).expect("serialize");
-            let fields = body["widget"]["children"][0]["fields"].as_array().expect("form fields").clone();
+            let fields = body["widget"]["children"][0]["fields"]
+                .as_array()
+                .expect("form fields")
+                .clone();
             fields.into_iter().next().filter(|w| w["type"] == "callout")
         };
-        let adguard = front(json!({"53":"AdGuardHome","5053":"https-dns-proxy"})).expect("a notice first");
+        let adguard =
+            front(json!({"53":"AdGuardHome","5053":"https-dns-proxy"})).expect("a notice first");
         assert_eq!(adguard["title"], "AdGuard Home answers your devices");
-        assert_eq!((adguard["variant"].as_str(), adguard["compact"].as_bool()), (Some("info"), Some(true)));
+        assert_eq!(
+            (adguard["variant"].as_str(), adguard["compact"].as_bool()),
+            (Some("info"), Some(true))
+        );
         let other = front(json!({"53":"coredns"})).expect("a notice first");
         assert_eq!(other["title"], "Another program answers your devices");
-        assert!(front(json!({"53":"dnsmasq"})).is_none(), "dnsmasq on 53 is the usual case");
+        assert!(
+            front(json!({"53":"dnsmasq"})).is_none(),
+            "dnsmasq on 53 is the usual case"
+        );
         assert!(front(json!({})).is_none());
     }
 

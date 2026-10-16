@@ -220,8 +220,18 @@ mod tests {
         assert_eq!(
             rows,
             vec![
-                ("Log every lease".into(), "on".into(), "logdhcp".into(), vec![0]),
-                ("Log every query".into(), "on".into(), "logqueries".into(), vec![1]),
+                (
+                    "Log every lease".into(),
+                    "on".into(),
+                    "logdhcp".into(),
+                    vec![0]
+                ),
+                (
+                    "Log every query".into(),
+                    "on".into(),
+                    "logqueries".into(),
+                    vec![1]
+                ),
             ]
         );
     }

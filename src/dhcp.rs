@@ -911,7 +911,10 @@ ra=server&dhcpv6=server&ra_slaac=1";
         assert_eq!(lan["cells"][3]["text"], "12h");
         assert_eq!(lan["cells"][4]["text"], "SLAAC and DHCPv6");
         // The state reads last, beside the acts it explains.
-        assert_eq!(sections(&page)[0]["children"][0]["columns"][5]["kind"], "status");
+        assert_eq!(
+            sections(&page)[0]["children"][0]["columns"][5]["kind"],
+            "status"
+        );
         // A pool that states no offsets still shows the span dnsmasq would use.
         let guest = rows
             .as_array()

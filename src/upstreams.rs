@@ -263,7 +263,11 @@ mod tests {
     #[test]
     fn creating_an_entry_appends_it_and_rewrites_the_list() {
         let mut model = fixture::dnsdhcp();
-        let body = body(create(&request(), &mut model, &Form::parse("server=8.8.8.8")));
+        let body = body(create(
+            &request(),
+            &mut model,
+            &Form::parse("server=8.8.8.8"),
+        ));
         assert_eq!(body["title"], "DNS");
         assert_eq!(body["notice"]["text"], "Server added.");
         assert_eq!(
@@ -310,7 +314,8 @@ mod tests {
     fn deleting_the_last_entry_clears_the_list() {
         let mut model = fixture::dnsdhcp();
         model.upstreams.truncate(1);
-        let body = body(save(&request(), &mut model, "0", &Form::parse("_delete=1")).expect("entry"));
+        let body =
+            body(save(&request(), &mut model, "0", &Form::parse("_delete=1")).expect("entry"));
         assert_eq!(
             body["commit"][0]["values"],
             serde_json::json!({"server": null})
@@ -349,7 +354,11 @@ mod tests {
     #[test]
     fn a_refused_new_entry_comes_back_on_the_new_page_carrying_what_was_typed() {
         let mut model = fixture::dnsdhcp();
-        let body = body(create(&request(), &mut model, &Form::parse("server=nowhere")));
+        let body = body(create(
+            &request(),
+            &mut model,
+            &Form::parse("server=nowhere"),
+        ));
         assert_eq!(body["title"], "New server");
         assert!(body.get("commit").is_none());
         assert_eq!(control(&body, "server")["value"], "nowhere");

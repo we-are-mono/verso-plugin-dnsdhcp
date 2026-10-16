@@ -46,9 +46,7 @@ fn get(request: &Request) -> Envelope {
         Route::EditServer(index) => {
             upstreams::edit(&model, &index).unwrap_or_else(|| upstreams::missing(request))
         }
-        Route::EntityDevice(mac) => {
-            hosts::entity_tab(&model, &Leases::read(&request.ubus), &mac)
-        }
+        Route::EntityDevice(mac) => hosts::entity_tab(&model, &Leases::read(&request.ubus), &mac),
     }
 }
 
@@ -191,7 +189,10 @@ mod tests {
 
     #[test]
     fn the_device_panel_asks_for_its_tab() {
-        assert_eq!(read("/entity/device/30:9C:23:5E:88:01")["title"], "Reserved address");
+        assert_eq!(
+            read("/entity/device/30:9C:23:5E:88:01")["title"],
+            "Reserved address"
+        );
     }
 
     #[test]
@@ -208,8 +209,7 @@ mod tests {
     fn an_empty_config_still_answers_both_pages() {
         for path in ["/", "/dns"] {
             let mut request = fixture::request(path);
-            request.snapshot =
-                Snapshot::from_value(serde_json::json!({"dhcp": {}, "network": {}}));
+            request.snapshot = Snapshot::from_value(serde_json::json!({"dhcp": {}, "network": {}}));
             assert_eq!(get(&request).schema_version, 1, "{path}");
         }
     }

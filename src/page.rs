@@ -55,10 +55,12 @@ pub fn dns_href() -> String {
 fn encode(value: &str) -> String {
     value
         .bytes()
-        .map(|b| match b.is_ascii_alphanumeric() || b"-_.~:".contains(&b) {
-            true => (b as char).to_string(),
-            false => format!("%{b:02X}"),
-        })
+        .map(
+            |b| match b.is_ascii_alphanumeric() || b"-_.~:".contains(&b) {
+                true => (b as char).to_string(),
+                false => format!("%{b:02X}"),
+            },
+        )
         .collect()
 }
 
