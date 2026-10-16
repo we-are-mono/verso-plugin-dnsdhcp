@@ -124,27 +124,31 @@ pub fn range_label(subnet: Option<Subnet>, start: &str, limit: &str) -> String {
     }
 }
 
-/// expires_in says how long a lease has left, the way a person would. A lease
-/// whose moment has passed is stated as expired rather than as a negative time.
-pub fn expires_in(expires_at: i64) -> String {
-    expires_from(expires_at, now())
+/// expiry is how long a lease has left on the device's clock. A lease whose
+/// moment has passed is expired rather than a negative time.
+pub fn expiry(expires_at: i64) -> Expiry {
+    expiry_from(expires_at, now())
 }
 
-/// expires_from is expires_in against a stated clock, which is what makes the
-/// wording testable.
-pub fn expires_from(expires_at: i64, now: i64) -> String {
+/// Expiry is how long a lease has left: the seconds go to the shell, which
+/// writes them as every duration is written.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Expiry {
+    Never,
+    Expired,
+    In(u64),
+}
+
+/// expiry_from is expiry against a stated clock, which is what makes it
+/// testable.
+pub fn expiry_from(expires_at: i64, now: i64) -> Expiry {
     // dnsmasq writes 0 for a lease that never runs out (a static one it serves).
     if expires_at == 0 {
-        return "never".to_string();
+        return Expiry::Never;
     }
-    let left = expires_at - now;
-    if left <= 0 {
-        return "expired".to_string();
-    }
-    let (hours, minutes) = (left / 3600, (left % 3600) / 60);
-    match hours {
-        0 => format!("{minutes}m"),
-        _ => format!("{hours}h {minutes}m"),
+    match u64::try_from(expires_at - now) {
+        Ok(left) if left > 0 => Expiry::In(left),
+        _ => Expiry::Expired,
     }
 }
 
@@ -281,11 +285,14 @@ mod tests {
     #[test]
     fn a_lease_says_how_long_it_has_left() {
         let now = 1_787_800_000;
-        assert_eq!(expires_from(now + 9 * 3600 + 14 * 60, now), "9h 14m");
-        assert_eq!(expires_from(now + 42 * 60, now), "42m");
-        assert_eq!(expires_from(now, now), "expired");
-        assert_eq!(expires_from(now - 60, now), "expired");
-        assert_eq!(expires_from(0, now), "never");
+        assert_eq!(
+            expiry_from(now + 9 * 3600 + 14 * 60, now),
+            Expiry::In(33_240)
+        );
+        assert_eq!(expiry_from(now + 42 * 60, now), Expiry::In(2_520));
+        assert_eq!(expiry_from(now, now), Expiry::Expired);
+        assert_eq!(expiry_from(now - 60, now), Expiry::Expired);
+        assert_eq!(expiry_from(0, now), Expiry::Never);
     }
 
     #[test]

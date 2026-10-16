@@ -58,6 +58,20 @@ pub fn reserve_href(mac: &str) -> String {
     format!("{}&{RESERVE}={mac}", page::open_href(page::NEW))
 }
 
+/// expiry_cell is the Expires in column: the time left as seconds, which the
+/// shell writes as every duration is written, or the word for a lease that
+/// never runs out or already has.
+fn expiry_cell(expiry: format::Expiry) -> TableCell {
+    match expiry {
+        format::Expiry::In(seconds) => TableCell {
+            duration: Some(seconds),
+            ..TableCell::default()
+        },
+        format::Expiry::Never => page::text_cell("never"),
+        format::Expiry::Expired => page::text_cell("expired"),
+    }
+}
+
 fn row(model: &Dnsdhcp, lease: &Lease) -> TableRow {
     let network = model.network_of(&lease.ipv4);
     let reserved = model.reserved(&lease.mac);
@@ -91,7 +105,7 @@ fn row(model: &Dnsdhcp, lease: &Lease) -> TableRow {
             page::network_cell(network),
             page::address_cell(&lease.ipv4),
             page::mono_cell(&lease.mac),
-            page::text_cell(&format::expires_in(lease.expires_at)),
+            expiry_cell(format::expiry(lease.expires_at)),
             TableCell {
                 actions: acts,
                 ..TableCell::default()
@@ -146,6 +160,22 @@ mod tests {
         assert_eq!(nas["cells"][0]["tag_icon"], "pin");
         assert!(nas["cells"][5].get("actions").is_none());
         assert!(nas.get("panel").is_none());
+    }
+
+    #[test]
+    fn time_left_is_handed_over_as_seconds_and_the_ends_in_words() {
+        let left = serde_json::to_value(expiry_cell(format::Expiry::In(31_620))).unwrap();
+        assert_eq!(left["duration"], 31_620);
+        assert!(left.get("text").is_none_or(|t| t == ""));
+        for (expiry, word) in [
+            (format::Expiry::Never, "never"),
+            (format::Expiry::Expired, "expired"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(expiry_cell(expiry)).unwrap()["text"],
+                word
+            );
+        }
     }
 
     #[test]
