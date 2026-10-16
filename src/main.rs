@@ -34,6 +34,7 @@ fn main() {
 fn get(request: &Request) -> Envelope {
     let model = Dnsdhcp::read(&request.snapshot);
     match Route::of(&request.path) {
+        Route::NotFound => Envelope::not_found(),
         Route::Dhcp => dhcp::get(request),
         Route::Dns => dns::page(request),
         Route::Files => files::get(request),
@@ -54,6 +55,7 @@ fn get(request: &Request) -> Envelope {
 fn post(request: &Request, form: &Form) -> Envelope {
     let mut model = Dnsdhcp::read(&request.snapshot);
     match Route::of(&request.path) {
+        Route::NotFound => Envelope::not_found(),
         Route::Dhcp => dhcp::post(request, form),
         Route::Dns => dns::post(request, form),
         Route::Files => files::post(request, form),
@@ -70,10 +72,11 @@ fn post(request: &Request, form: &Form) -> Envelope {
 }
 
 /// Route is what a request's sub-path asks for: one of the two pages, a DNS
-/// object's own page, a custom options file, or the device panel's tab. A
-/// sub-path this plugin does not publish answers with the DHCP page, so a stale
-/// link lands somewhere real; an editor's own root (`dns/records` with no
-/// section) is the DNS page it belongs to.
+/// object's own page, a custom options file, or the device panel's tab. An
+/// address this plugin had before (`config`, `leases`, `dhcp`) answers with the
+/// DHCP page, so a stale link lands somewhere real; an editor's own root
+/// (`dns/records` with no section) is the DNS page it belongs to; any other
+/// path has nothing at it.
 enum Route {
     Dhcp,
     Dns,
@@ -86,6 +89,8 @@ enum Route {
     /// answers with a tab, not a page: the panel around it is the shell's, and
     /// the other tabs in it belong to plugins this one knows nothing about.
     EntityDevice(String),
+    /// A path that was never an address here.
+    NotFound,
 }
 
 impl Route {
@@ -111,9 +116,14 @@ impl Route {
         if let Some(mac) = path.strip_prefix("entity/device/") {
             return Route::EntityDevice(mac.to_string());
         }
-        match path {
-            page::DNS => Route::Dns,
-            _ => Route::Dhcp,
+        // The plugin's own address is DHCP, and so is every address it had
+        // before the two pages settled: a stale link lands somewhere real. A
+        // path that was never an address here has nothing at it.
+        let first = path.split('/').next().unwrap_or_default();
+        match (path, first) {
+            (page::DNS, _) => Route::Dns,
+            ("", _) | (_, "config" | "leases" | "dhcp") => Route::Dhcp,
+            _ => Route::NotFound,
         }
     }
 }
@@ -141,11 +151,21 @@ mod tests {
     }
 
     #[test]
-    fn the_two_pages_have_two_addresses_and_every_other_lands_on_dhcp() {
+    fn the_two_pages_have_two_addresses_and_old_ones_land_on_dhcp() {
         assert_eq!(read("/")["title"], "DHCP");
         assert_eq!(read("/dns")["title"], "DNS");
-        for stale in ["/config", "/leases", "/dhcp", "/nowhere", "/config/reservations/new"] {
+        for stale in ["/config", "/leases", "/dhcp", "/config/reservations/new"] {
             assert_eq!(read(stale)["title"], "DHCP", "{stale}");
+            assert!(read(stale).get("not_found").is_none(), "{stale}");
+        }
+    }
+
+    // A path that was never an address here has nothing at it, and says so
+    // rather than passing for the DHCP page.
+    #[test]
+    fn a_path_that_names_nothing_has_nothing_at_it() {
+        for path in ["/nowhere", "/dnsx", "/dhcp-servers"] {
+            assert_eq!(read(path)["not_found"], true, "{path}");
         }
     }
 
