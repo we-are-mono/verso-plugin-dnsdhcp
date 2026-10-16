@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 
-use verso_plugin::{Change, Description, Section, Snapshot};
+use verso_plugin::{Change, Description, Form, Request, Section, Snapshot, Ubus, Value};
 
 use crate::model::CONFIG;
 
@@ -32,11 +32,44 @@ pub fn describe(changes: &[Change], snapshot: &Snapshot) -> Vec<Description> {
 
     let mut out = Vec::new();
     for section in &order {
-        if let Some(d) = describe_section(section, &groups[section], changes, snapshot) {
+        let typ = snapshot
+            .section(CONFIG, section)
+            .map(|s| s.scalar(".type"))
+            .unwrap_or_default();
+        if typ == "dnsmasq" {
+            out.extend(describe_daemon(&groups[section], changes, snapshot));
+        } else if let Some(d) = describe_section(section, &groups[section], changes, snapshot) {
             out.push(d);
         }
     }
     out
+}
+
+/// describe_daemon says each change to the daemon's settings as its row does:
+/// the DHCP and DNS pages are rendered from the staged config and each changed
+/// option read off whichever draws it, so the review uses that page's own label
+/// and shows what its control now holds. An option neither page draws keeps
+/// its raw line.
+fn describe_daemon(idxs: &[usize], changes: &[Change], snapshot: &Snapshot) -> Vec<Description> {
+    let request = |path: &str| Request {
+        path: path.into(),
+        query: Form::default(),
+        snapshot: snapshot.clone(),
+        ubus: Ubus::from_value(Value::Null),
+    };
+    let pages = [
+        crate::dhcp::get(&request("")).widget,
+        crate::dns::page(&request(crate::page::DNS)).widget,
+    ];
+    idxs.iter()
+        .filter(|&&i| changes[i].op != "add-section" && changes[i].op != "remove-section")
+        .filter_map(|&i| {
+            let option = &changes[i].option;
+            let read = pages.iter().find_map(|page| page.reading(option))?;
+            let said = Description::setting(&read.label, &read.value, option, vec![i]);
+            Some(if read.words { said } else { said.verbatim() })
+        })
+        .collect()
 }
 
 /// describe_section names what happened to one section, or returns None to leave
@@ -73,10 +106,9 @@ fn describe_section(
 /// subject names the object a sentence is about, by its uci section type, or None
 /// for a type the drawer has no sentence for. It names only the *items* a person
 /// lists and edits in a drawer — a DHCP server, a reservation, a DNS record — and
-/// deliberately not the daemon (`dnsmasq`) section: that is a settings page,
-/// where each option a person changes is its own change and stays on its own
-/// line. Returning None leaves each such write to its raw line, so it counts on
-/// its own.
+/// not the daemon (`dnsmasq`) section: that is a settings page, where each option
+/// a person changes is its own change on its own line (describe_daemon).
+/// Returning None leaves a write to its raw line, so it counts on its own.
 fn subject(typ: &str, section: &str, sec: Option<&Section>) -> Option<String> {
     match typ {
         "dhcp" => {
@@ -163,13 +195,35 @@ mod tests {
         assert_eq!(out[0].covers, vec![0, 1]);
     }
 
+    // The daemon's settings stay one line each, read off the page that sets them
+    // (DHCP's settings or the DNS page) in that page's words: the label, what the
+    // control now shows, the option. One the pages do not draw keeps its raw line.
     #[test]
-    fn daemon_settings_are_not_grouped() {
+    fn daemon_settings_read_as_their_rows() {
         let snap = snapshot(json!({
-            "dhcp": { "dnsmasq_main": { ".type": "dnsmasq", ".name": "dnsmasq_main" } }
+            "dhcp": { "dnsmasq_main": {
+                ".type": "dnsmasq", ".name": "dnsmasq_main", "logdhcp": "1", "logqueries": "1"
+            } }
         }));
-        let out = describe(&[change("set", "dnsmasq_main", "logqueries", "1")], &snap);
-        assert!(out.is_empty());
+        let changes = [
+            change("set", "dnsmasq_main", "logdhcp", "1"),
+            change("set", "dnsmasq_main", "logqueries", "1"),
+            change("set", "dnsmasq_main", "nothing_draws_this", "1"),
+        ];
+        let rows: Vec<_> = describe(&changes, &snap)
+            .into_iter()
+            .map(|d| {
+                let s = d.setting.expect("a setting");
+                (s.label, s.value, s.key, d.covers)
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("Log every lease".into(), "on".into(), "logdhcp".into(), vec![0]),
+                ("Log every query".into(), "on".into(), "logqueries".into(), vec![1]),
+            ]
+        );
     }
 
     #[test]
