@@ -13,6 +13,7 @@ const ROOT: &str = "/plugins/dnsdhcp/dns";
 pub const PREFIX: &str = "dns/files/";
 
 const SET: FileSet = FileSet {
+    family: "dnsmasq",
     page: ROOT,
     editors: "/plugins/dnsdhcp/dns/files/",
     dir: "/etc/dnsmasq.d/",
