@@ -237,36 +237,17 @@ impl Settings {
     fn flag(&self, key: &str) -> Widget {
         self.check(key, FLAGS.iter().find(|f| f.0 == key).unwrap().1, key)
     }
-    fn field(&self, e: &Errors, key: &str, label: &str, hint: &str) -> Widget {
+    fn field(&self, e: &Errors, key: &str, label: &str) -> Widget {
         let mut w = Widget::field(key, label, self.v(key), "", "").writes(key);
-        if let Widget::Field(Field {
-            placeholder, error, ..
-        }) = &mut w
-        {
-            *placeholder = hint.into();
+        if let Widget::Field(Field { error, .. }) = &mut w {
             *error = e.get(key).cloned().unwrap_or_default();
         }
         w
     }
-    fn rows(
-        &self,
-        e: &Errors,
-        key: &str,
-        label: &str,
-        option: &str,
-        hint: &str,
-        datatype: &str,
-    ) -> Widget {
+    fn rows(&self, e: &Errors, key: &str, label: &str, option: &str, datatype: &str) -> Widget {
         let mut w = Widget::list(key, label, datatype, &self.list(key), "").writes(option);
-        if let Widget::List(List {
-            style,
-            prompt,
-            errors,
-            ..
-        }) = &mut w
-        {
+        if let Widget::List(List { style, errors, .. }) = &mut w {
             *style = "rows".into();
-            *prompt = hint.into();
             if let Some(error) = e.get(key) {
                 errors.insert("0".into(), error.clone());
             }
@@ -307,12 +288,9 @@ fn missing(label: &str, desc: &str, package: &str) -> Vec<Widget> {
     if let Widget::Callout { acts, .. } = &mut notice {
         acts.push(Widget::Link {
             label: format!("Install {package}"),
-            desc: String::new(),
             href: format!("/system/packages/package?name={package}"),
             style: "secondary".into(),
-            code: String::new(),
             icon: "download".into(),
-            act: String::new(),
             panel: true,
         });
     }
@@ -339,14 +317,8 @@ fn render(r: &Request, s: &Settings, e: &Errors) -> Envelope {
         "",
         "upstream",
         vec![
-            s.rows(
-                e,
-                "upstream",
-                "Upstream servers",
-                "server",
-                "e.g. 1.1.1.1",
-                "dnsserver",
-            ),
+            s.rows(e, "upstream", "Upstream servers", "server", "dnsserver")
+                .for_example("1.1.1.1"),
             s.check("peerdns", "Use the servers the ISP hands out", "peerdns"),
         ],
     )];
@@ -355,16 +327,10 @@ fn render(r: &Request, s: &Settings, e: &Errors) -> Envelope {
         "local-names",
         if s.resolver {
             vec![
-                s.field(e, "domain", "Local domain", "e.g. lan"),
+                s.field(e, "domain", "Local domain").for_example("lan"),
                 s.flag("expandhosts"),
-                s.rows(
-                    e,
-                    "address",
-                    "Extra hostnames",
-                    "address",
-                    "e.g. /nas.lan/10.0.0.12",
-                    "dnsaddress",
-                ),
+                s.rows(e, "address", "Extra hostnames", "address", "dnsaddress")
+                    .for_example("/nas.lan/10.0.0.12"),
                 s.flag("rebind_protection"),
             ]
         } else {
@@ -406,12 +372,9 @@ fn render(r: &Request, s: &Settings, e: &Errors) -> Envelope {
                         name: "provider".into(),
                         value: "custom".into(),
                         active: s.v("provider") == "custom",
-                        children: vec![s.field(
-                            e,
-                            "resolver_url",
-                            "Resolver URL",
-                            "https://dns.example/dns-query",
-                        )],
+                        children: vec![s
+                            .field(e, "resolver_url", "Resolver URL")
+                            .for_example("https://dns.example/dns-query")],
                     },
                 ],
             },
@@ -437,14 +400,15 @@ fn render(r: &Request, s: &Settings, e: &Errors) -> Envelope {
         sections.push(part(
             "Forwarding",
             "forwarding",
-            vec![s.rows(
-                e,
-                "forwarding",
-                "Send these domains to a specific server",
-                "server",
-                "e.g. /corp.example/10.1.0.53",
-                "dnsforward",
-            )],
+            vec![s
+                .rows(
+                    e,
+                    "forwarding",
+                    "Send these domains to a specific server",
+                    "server",
+                    "dnsforward",
+                )
+                .for_example("/corp.example/10.1.0.53")],
         ));
         sections.push(part(
             "Blocking",
@@ -466,7 +430,7 @@ fn render(r: &Request, s: &Settings, e: &Errors) -> Envelope {
             "behaviour",
             vec![
                 s.flag("localservice"),
-                s.field(e, "cachesize", "Cache size", "default 150"),
+                s.field(e, "cachesize", "Cache size").by_default("150"),
                 s.flag("logqueries"),
             ],
         ));
@@ -1016,6 +980,28 @@ mod tests {
         // full address; the form names the daemon's section once.
         let page = serde_json::to_string(&page(&request())).unwrap();
         assert!(page.contains("\"target\":\"dhcp.main\""), "{page}");
+    }
+    // An empty box's hint is a default or an example the shell words and
+    // translates, never words the plugin wrote into the placeholder.
+    #[test]
+    fn an_empty_box_names_its_default_or_an_example() {
+        let page = serde_json::to_value(page(&request())).unwrap();
+        let control = |name: &str| find(&page, &|v| v["name"] == name).unwrap();
+        assert_eq!(control("cachesize")["default"], "150");
+        for (key, example) in [
+            ("domain", "lan"),
+            ("upstream", "1.1.1.1"),
+            ("address", "/nas.lan/10.0.0.12"),
+            ("forwarding", "/corp.example/10.1.0.53"),
+            ("resolver_url", "https://dns.example/dns-query"),
+        ] {
+            let c = control(key);
+            assert_eq!(c["example"], example, "{key}");
+            assert!(
+                c.get("placeholder").is_none() && c.get("prompt").is_none(),
+                "{key}"
+            );
+        }
     }
     #[test]
     fn unchanged_settings_do_not_stage_defaults() {
