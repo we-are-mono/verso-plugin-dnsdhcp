@@ -24,10 +24,23 @@ use crate::page;
 
 const MISSING: &str = "That record isn’t here any more, so here is the DNS page instead.";
 
-/// blank answers a visit to the new-record page: an A record with nothing filled
-/// in, the everyday kind an operator reaches for first.
-pub fn blank() -> Envelope {
-    editor(None, &Record::blank(), &Errors::default())
+/// blank answers a visit to the new-record page: an A record, the everyday kind
+/// an operator reaches for first, with nothing filled in, or with the name and
+/// target the query names, which is how another page offers a record to add (a
+/// trusted certificate's domain, answered on the LAN). What it offers is marked
+/// as a typed value would be, and staging it stays the Save of this page.
+pub fn blank(query: &Form) -> Envelope {
+    let mut record = Record::blank();
+    record.name = query.get("name").trim().to_string();
+    record.target = query.get("target").trim().to_string();
+    let mut errors = Errors::default();
+    if !record.name.is_empty() {
+        errors.check("name", form::valid_hostname(&record.name), NAME_HELP);
+    }
+    if !record.target.is_empty() {
+        errors.check("target", target_ok(&record), target_help(record.kind));
+    }
+    editor(None, &record, &errors)
 }
 
 /// edit answers a visit to one record's page, or nothing when the sub-path names
@@ -54,7 +67,7 @@ pub fn create(r: &Request, model: &mut Dnsdhcp, form: &Form) -> Envelope {
     let Some(kind) = RecordKind::of(&form.get("kind")) else {
         // The type is a closed choice, so a value outside it is not something
         // this page offered — the blank page, so the operator can start again.
-        return blank().with_notice(Tone::Danger, form::UNKNOWN);
+        return blank(&Form::default()).with_notice(Tone::Danger, form::UNKNOWN);
     };
     let stated = submitted("", kind, form);
     let errors = validate(&stated);
@@ -210,17 +223,8 @@ fn submitted(section: &str, kind: RecordKind, form: &Form) -> Record {
 /// write, because a record it cannot parse is skipped with nothing said.
 fn validate(record: &Record) -> Errors {
     let mut errors = Errors::default();
-    errors.check(
-        "name",
-        form::valid_hostname(&record.name),
-        "Write the name being answered, such as nas.lan.",
-    );
-    let target_ok = match record.kind {
-        RecordKind::A => form::valid_ipv4(&record.target),
-        RecordKind::Aaaa => form::valid_ipv6(&record.target),
-        _ => form::valid_hostname(&record.target),
-    };
-    errors.check("target", target_ok, target_help(record.kind));
+    errors.check("name", form::valid_hostname(&record.name), NAME_HELP);
+    errors.check("target", target_ok(record), target_help(record.kind));
     if record.kind == RecordKind::Srv {
         errors.check(
             "port",
@@ -236,6 +240,18 @@ fn validate(record: &Record) -> Errors {
         );
     }
     errors
+}
+
+const NAME_HELP: &str = "Write the name being answered, such as nas.lan.";
+
+/// target_ok is whether the record points where its type can: an address of
+/// its family for A and AAAA, a name for the rest.
+fn target_ok(record: &Record) -> bool {
+    match record.kind {
+        RecordKind::A => form::valid_ipv4(&record.target),
+        RecordKind::Aaaa => form::valid_ipv6(&record.target),
+        _ => form::valid_hostname(&record.target),
+    }
 }
 
 fn target_help(kind: RecordKind) -> &'static str {
@@ -359,7 +375,7 @@ mod tests {
         assert_eq!(delete["fields"][0]["name"], "_delete");
         assert_eq!(delete["fields"][1]["type"], "confirm");
 
-        let blank = body(blank());
+        let blank = body(blank(&Form::default()));
         assert_eq!(blank["title"], "New record");
         assert_eq!(control(&blank, "kind")["value"], "A");
         assert_eq!(control(&blank, "name")["value"], "");
@@ -371,6 +387,32 @@ mod tests {
             1,
             "a record that does not exist yet cannot be deleted"
         );
+    }
+
+    // Another page sends the operator here with the record it wants added —
+    // the trusted certificate's domain answered with the router's address — and
+    // saving it stays this page's act.
+    #[test]
+    fn the_new_page_takes_a_name_and_a_target_from_its_query() {
+        let offered = body(blank(&Form::parse(
+            "name=router.example.com&target=192.168.1.1&port=99&kind=MX",
+        )));
+        assert_eq!(control(&offered, "kind")["value"], "A");
+        assert_eq!(control(&offered, "name")["value"], "router.example.com");
+        assert_eq!(control(&offered, "target")["value"], "192.168.1.1");
+        assert_eq!(control(&offered, "port")["value"], "", "only name and target are taken");
+        assert!(control(&offered, "name").get("error").is_none());
+        assert!(control(&offered, "target").get("error").is_none());
+        assert!(offered.get("commit").is_none(), "opening the page stages nothing");
+
+        let typo = body(blank(&Form::parse("name=router..example.com&target=192.168.1")));
+        assert_eq!(control(&typo, "name")["value"], "router..example.com");
+        assert!(control(&typo, "name").get("error").is_some(), "{typo}");
+        assert_eq!(control(&typo, "target")["value"], "192.168.1");
+        assert!(control(&typo, "target").get("error").is_some());
+
+        let half = body(blank(&Form::parse("name=router.example.com")));
+        assert!(control(&half, "target").get("error").is_none(), "an empty field is not marked");
     }
 
     #[test]

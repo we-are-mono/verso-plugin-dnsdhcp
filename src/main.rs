@@ -38,7 +38,7 @@ fn get(request: &Request) -> Envelope {
         Route::Dhcp => dhcp::get(request),
         Route::Dns => dns::page(request),
         Route::Files => files::get(request),
-        Route::NewRecord => records::blank(),
+        Route::NewRecord => records::blank(&request.query),
         Route::EditRecord(section) => {
             records::edit(&model, &section).unwrap_or_else(|| records::missing(request))
         }
