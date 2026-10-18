@@ -62,14 +62,19 @@
         "function": "read"
       },
       {
-        "scope": "ubus",
-        "object": "verso",
-        "function": "dnsState"
+        "scope": "verso-plugin",
+        "object": "dnsdhcp",
+        "function": "dns-state"
+      },
+      {
+        "scope": "verso-plugin",
+        "object": "dnsdhcp",
+        "function": "dhcp-state"
       },
       {
         "scope": "ubus",
         "object": "verso",
-        "function": "dhcpState"
+        "function": "configFiles"
       }
     ],
     "write": [

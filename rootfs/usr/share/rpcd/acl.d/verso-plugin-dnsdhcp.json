@@ -10,14 +10,19 @@
       ],
       "ubus": {
         "verso": [
-          "dnsState",
-          "dhcpState"
+          "configFiles"
         ],
         "service": [
           "list"
         ],
         "network.interface": [
           "dump"
+        ]
+      },
+      "verso-plugin": {
+        "dnsdhcp": [
+          "dhcp-state",
+          "dns-state"
         ]
       }
     },

@@ -56,6 +56,7 @@ fn describe_daemon(idxs: &[usize], changes: &[Change], snapshot: &Snapshot) -> V
         query: Form::default(),
         snapshot: snapshot.clone(),
         ubus: Ubus::from_value(Value::Null),
+        plugins: verso_plugin::Plugins::default(),
     };
     let pages = [
         crate::dhcp::get(&request("")).widget,

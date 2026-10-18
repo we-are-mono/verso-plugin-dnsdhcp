@@ -10,6 +10,53 @@ of Verso's sidebar; removed, they leave it. Like every Verso plugin it runs as
 its own process, describes its pages with Verso's widgets, and reads and writes
 the router only through rpcd and the access list it ships.
 
+## Root half
+
+What only root can see is read by the plugin's root half: this plugin's own
+binary run as root by Verso's helper, for the commands the package registers in
+`/usr/share/verso/plugins/dnsdhcp/commands.json` (Verso ADR-027):
+
+- `dhcp-state`, a read: each network's DHCP server as dnsmasq loaded it;
+- `dns-state`, a read: what the resolver can do and which program answers each
+  local port;
+- `files`, the `dnsmasq` file family's transform: a listing shows the files as
+  they are, and a save is checked by dnsmasq itself before it is staged.
+
+### `dnsdhcp.dhcp-state`, version 1
+
+`{"networks": {"lan": {"enabled": true, "state": "running", "pool": "192.168.1.100–192.168.1.249", "lease_time": "12h", "leases": 12}}}`
+
+- **Sources.** procd's service list, the ranges dnsmasq generated, netifd and
+  the unexpired leases.
+- **`enabled`** comes from the applied configuration, not the operator's staged
+  changes.
+- **`state`** is `running`, `warning`, `stopped` or `disabled`; an optional
+  `reason` tells a failure, an unavailable reading and a full pool apart.
+- **`leases`** is absent when it could not be counted, never zero.
+
+The Interfaces plugin reads it too, through the SDK's `dhcp::servers`.
+
+### `dnsdhcp.dns-state`, version 1
+
+`{"resolver": true, "dnssec": true, "doh": false, "adblock": false, "listeners": {"5053": "AdGuardHome"}}`
+
+- **`resolver`, `doh`, `adblock`.** Whether dnsmasq, https-dns-proxy and
+  adblock are installed.
+- **`dnssec`.** Whether the installed dnsmasq is built with DNSSEC.
+- **`listeners`.** Each UDP port a program answers on, for loopback or every
+  address, with that program's name: what a `127.0.0.1#port` upstream really
+  is.
+
+### The `dnsmasq` family's files
+
+dnsmasq's custom option files are `/etc/dnsmasq.conf` and `.conf` files in
+`/etc/dnsmasq.d`, listed through Verso's `configFiles` read as they will read
+once staged changes are applied. Saving one stages it through Verso's
+`stageConfigFile`; dnsmasq checks the options first (`dnsmasq --test`) and a
+file it would not start with is refused. A file saved in `/etc/dnsmasq.d` also
+stages that folder as each resolver's `confdir`, which dnsmasq's jail must
+mount; a resolver that reads another folder refuses the save.
+
 ## Install
 
 On a router running Verso, from the Verso package feed:
@@ -24,7 +71,7 @@ The package depends on `verso` and `dnsmasq`.
 ## Build
 
 The plugin is a static Rust binary built on Verso's plugin SDK, which Cargo
-fetches from the Verso repository at the release this plugin pins.
+reads from the Verso checkout beside it (`../verso-plugin-sdk`).
 `rust-toolchain.toml` provisions the compiler and both musl targets; nothing
 else is needed but `rustup` and `make`.
 
@@ -45,8 +92,8 @@ pass `OPENWRT_DIR=/path/to/openwrt/source`, or set it in a gitignored
 - `src/` — the plugin: its pages, the router reads behind them, and tests
 - `manifest.json` — what the shell discovers: the plugin's pages and its socket
 - `i18n/` — its translations, one catalog per language
-- `rootfs/` — what the package installs as it stands: the init script and the
-  rpcd access list
+- `rootfs/` — what the package installs as it stands: the init script, the
+  rpcd access list and the command registry
 - `packaging/post-install.sh` — enables and starts the plugin's service
 
 ## License

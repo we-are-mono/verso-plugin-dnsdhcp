@@ -10,8 +10,10 @@ ID          := dnsdhcp
 NAME        := verso-plugin-$(ID)
 DESCRIPTION := Verso DNS and DHCP — dnsmasq and odhcpd, as pages
 # Useful only where dnsmasq serves the network, and only beside the shell it
-# plugs into.
-DEPENDS     := verso dnsmasq
+# plugs into. Its root half runs through the command registry and the file
+# families declared by plugins; the verso it depends on is the one that no
+# longer does that work itself.
+DEPENDS     := verso>=0.9.0-r58 dnsmasq
 
 CARGO    ?= $(if $(wildcard $(HOME)/.cargo/bin/cargo),$(HOME)/.cargo/bin/cargo,cargo)
 BUILDDIR := build

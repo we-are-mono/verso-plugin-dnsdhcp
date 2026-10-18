@@ -9,6 +9,7 @@ use verso_plugin::{serve_described, Envelope, Form, Request};
 
 mod describe;
 mod dhcp;
+mod dhcp_state;
 mod dns;
 mod files;
 mod form;
@@ -19,6 +20,8 @@ mod live;
 mod model;
 mod page;
 mod records;
+mod resolver;
+mod root;
 mod upstreams;
 
 #[cfg(test)]
@@ -28,6 +31,9 @@ use live::Leases;
 use model::Dnsdhcp;
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("root") {
+        root::run();
+    }
     serve_described("dnsdhcp", get, post, describe::describe);
 }
 

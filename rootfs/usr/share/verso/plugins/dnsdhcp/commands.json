@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "commands": [
+    { "name": "dhcp-state", "kind": "read", "version": 1,
+      "exec": "/usr/bin/verso-plugin-dnsdhcp", "argv": ["root"] },
+    { "name": "dns-state", "kind": "read", "version": 1,
+      "exec": "/usr/bin/verso-plugin-dnsdhcp", "argv": ["root"] },
+    { "name": "files", "kind": "transform",
+      "exec": "/usr/bin/verso-plugin-dnsdhcp", "argv": ["root"] }
+  ],
+  "families": [
+    {
+      "name": "dnsmasq",
+      "config": "dhcp",
+      "files": ["/etc/dnsmasq.conf"],
+      "dir": { "path": "/etc/dnsmasq.d", "suffixes": [".conf"], "names": "plain" },
+      "mode": "0644",
+      "words": {
+        "too_large": "Custom option files must be at most 32 KiB.",
+        "invalid": "Invalid custom options file.",
+        "over_limit": "Custom option files exceed the editor size limit."
+      },
+      "check": ["/usr/sbin/dnsmasq", "--test", "--conf-file=/etc/dnsmasq.conf", "--conf-dir=/etc/dnsmasq.d"],
+      "reload": ["/etc/init.d/dnsmasq", "reload"],
+      "transform": "files"
+    }
+  ]
+}

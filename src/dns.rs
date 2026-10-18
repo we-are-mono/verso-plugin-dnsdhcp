@@ -96,7 +96,9 @@ impl Settings {
         let proxy = section(r, "https-dns-proxy", "https-dns-proxy");
         let proxy_main = section(r, "https-dns-proxy", "main");
         let adblock = section(r, "adblock", "adblock");
-        let state = r.ubus.get("dnsState");
+        let state = r
+            .ubus
+            .read("dnsdhcp.dns-state", &[crate::root::DNS_STATE_VERSION]);
         let capability = |key: &str, fallback| {
             state
                 .and_then(|s| s.get(key))
@@ -270,6 +272,7 @@ fn notice(title: &str, body: &str) -> Widget {
         body: body.into(),
         compact: true,
         acts: Vec::new(),
+        door: None,
     }
 }
 fn proxy_address(proxy: &Options) -> String {
@@ -802,10 +805,13 @@ mod tests {
                 "network":{"wan":{".name":"wan",".type":"interface","proto":"dhcp","peerdns":"1"}},
                 "https-dns-proxy":{"config":{".name":"config",".type":"main"},"resolver":{".name":"resolver",".type":"https-dns-proxy","listen_port":"5053","resolver_url":"https://dns.quad9.net/dns-query"}}
             })),
-            ubus: Ubus::from_value(
-                json!({"dnsState":{"resolver":true,"dnssec":false,"doh":true,"adblock":false}}),
-            ),
+            ubus: dns_state(json!({"resolver":true,"dnssec":false,"doh":true,"adblock":false})),
+            plugins: verso_plugin::Plugins::default(),
         }
+    }
+    /// dns_state is this plugin's dns-state read as the shell hands it on.
+    fn dns_state(result: Value) -> Ubus {
+        Ubus::from_value(json!({"dnsdhcp.dns-state": {"version": 1, "result": result}}))
     }
     // Every status row the page draws, wherever it sits in the tree.
     fn statuses(v: &Value) -> Vec<Value> {
@@ -827,8 +833,7 @@ mod tests {
     #[test]
     fn a_missing_package_installs_in_its_own_drawer_over_the_page() {
         let mut r = request();
-        r.ubus =
-            Ubus::from_value(json!({"dnsState":{"resolver":true,"doh":false,"adblock":false}}));
+        r.ubus = dns_state(json!({"resolver":true,"doh":false,"adblock":false}));
         let body = serde_json::to_value(page(&r)).expect("serialize");
         for (anchor, title, package) in [
             ("privacy", "Queries leave in plain text", "https-dns-proxy"),
@@ -876,10 +881,8 @@ mod tests {
             "dhcp":{"main":{".name":"main",".type":"dnsmasq","server":["127.0.0.1#5053"],"noresolv":"1"}},
             "https-dns-proxy":{"resolver":{".name":"resolver",".type":"https-dns-proxy","listen_port":"5053"}}
         }));
-        r.ubus = Ubus::from_value(
-            json!({"dnsState":{"resolver":true,"doh":true,"adblock":true,
-            "listeners":{"5053":"AdGuardHome"}}}),
-        );
+        r.ubus = dns_state(json!({"resolver":true,"doh":true,"adblock":true,
+            "listeners":{"5053":"AdGuardHome"}}));
         let body = serde_json::to_value(page(&r)).expect("serialize");
         for anchor in ["privacy", "blocking"] {
             let fields = section_children(&body, anchor);
@@ -902,10 +905,8 @@ mod tests {
         );
         assert_eq!(Settings::read(&r).v("encrypted"), "0");
         // https-dns-proxy holding its own port is encryption.
-        r.ubus = Ubus::from_value(
-            json!({"dnsState":{"resolver":true,"doh":true,"adblock":false,
-            "listeners":{"5053":"https-dns-proxy"}}}),
-        );
+        r.ubus = dns_state(json!({"resolver":true,"doh":true,"adblock":false,
+            "listeners":{"5053":"https-dns-proxy"}}));
         assert_eq!(Settings::read(&r).v("encrypted"), "1");
     }
 
@@ -916,8 +917,8 @@ mod tests {
     fn another_program_on_port_53_is_the_front_door() {
         let front = |listeners: Value| {
             let mut r = request();
-            r.ubus = Ubus::from_value(
-                json!({"dnsState":{"resolver":true,"doh":false,"adblock":false,"listeners":listeners}}),
+            r.ubus = dns_state(
+                json!({"resolver":true,"doh":false,"adblock":false,"listeners":listeners}),
             );
             let body = serde_json::to_value(page(&r)).expect("serialize");
             let fields = body["widget"]["children"][0]["fields"]
@@ -1111,7 +1112,7 @@ mod tests {
     #[test]
     fn without_a_resolver_upstreams_belong_to_the_uplink() {
         let mut r = request();
-        r.ubus = Ubus::from_value(json!({"dnsState":{"resolver":false}}));
+        r.ubus = dns_state(json!({"resolver":false}));
         let e = post(&r, &form(&r, &[("upstream", &["9.9.9.9"])]));
         assert_eq!(e.commit.len(), 1);
         assert_eq!(e.commit[0].config, "network");

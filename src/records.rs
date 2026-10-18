@@ -400,19 +400,31 @@ mod tests {
         assert_eq!(control(&offered, "kind")["value"], "A");
         assert_eq!(control(&offered, "name")["value"], "router.example.com");
         assert_eq!(control(&offered, "target")["value"], "192.168.1.1");
-        assert_eq!(control(&offered, "port")["value"], "", "only name and target are taken");
+        assert_eq!(
+            control(&offered, "port")["value"],
+            "",
+            "only name and target are taken"
+        );
         assert!(control(&offered, "name").get("error").is_none());
         assert!(control(&offered, "target").get("error").is_none());
-        assert!(offered.get("commit").is_none(), "opening the page stages nothing");
+        assert!(
+            offered.get("commit").is_none(),
+            "opening the page stages nothing"
+        );
 
-        let typo = body(blank(&Form::parse("name=router..example.com&target=192.168.1")));
+        let typo = body(blank(&Form::parse(
+            "name=router..example.com&target=192.168.1",
+        )));
         assert_eq!(control(&typo, "name")["value"], "router..example.com");
         assert!(control(&typo, "name").get("error").is_some(), "{typo}");
         assert_eq!(control(&typo, "target")["value"], "192.168.1");
         assert!(control(&typo, "target").get("error").is_some());
 
         let half = body(blank(&Form::parse("name=router.example.com")));
-        assert!(control(&half, "target").get("error").is_none(), "an empty field is not marked");
+        assert!(
+            control(&half, "target").get("error").is_none(),
+            "an empty field is not marked"
+        );
     }
 
     #[test]

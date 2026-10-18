@@ -47,5 +47,6 @@ pub fn request(path: &str) -> verso_plugin::Request {
         query: verso_plugin::Form::default(),
         snapshot: snapshot(),
         ubus: ubus(),
+        plugins: verso_plugin::Plugins::default(),
     }
 }

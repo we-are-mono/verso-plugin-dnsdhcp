@@ -837,6 +837,7 @@ mod tests {
             query: Form::parse(query),
             snapshot: fixture::snapshot(),
             ubus: fixture::ubus(),
+            plugins: verso_plugin::Plugins::default(),
         }
     }
 
