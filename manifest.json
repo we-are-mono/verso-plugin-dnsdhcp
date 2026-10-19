@@ -7,12 +7,14 @@
     {
       "section": "Network",
       "label": "DHCP",
-      "path": "/"
+      "path": "/",
+      "order": 20
     },
     {
       "section": "Network",
       "label": "DNS",
-      "path": "/dns"
+      "path": "/dns",
+      "order": 30
     }
   ],
   "entity_tabs": [
