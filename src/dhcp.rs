@@ -232,10 +232,10 @@ impl State {
         Widget::Table(Table {
             columns: [
                 ("Network", "reference", ColumnWidth::Short),
-                ("Range", "mono", ColumnWidth::Long),
+                ("Range", "mono", ColumnWidth::Grow),
                 ("Leased", "meter", ColumnWidth::Name),
                 ("Lease time", "keyword", ColumnWidth::Short),
-                ("IPv6", "text", ColumnWidth::Word),
+                ("IPv6", "text", ColumnWidth::Address),
                 ("State", "status", ColumnWidth::Word),
                 ("", "actions", ColumnWidth::Short),
             ]
@@ -912,10 +912,11 @@ ra=server&dhcpv6=server&ra_slaac=1";
         assert_eq!(lan["cells"][3]["text"], "12h");
         assert_eq!(lan["cells"][4]["text"], "SLAAC and DHCPv6");
         // The state reads last, beside the acts it explains.
-        assert_eq!(
-            sections(&page)[0]["children"][0]["columns"][5]["kind"],
-            "status"
-        );
+        let columns = &sections(&page)[0]["children"][0]["columns"];
+        assert_eq!(columns[5]["kind"], "status");
+        // "SLAAC and DHCPv6" stands on one line, and the range takes the slack.
+        assert_eq!(columns[4]["width"], "address");
+        assert_eq!(columns[1].get("width"), None);
         // A pool that states no offsets still shows the span dnsmasq would use.
         let guest = rows
             .as_array()
