@@ -16,7 +16,7 @@
       "dir": { "path": "/etc/dnsmasq.d", "suffixes": [".conf"], "names": "plain" },
       "mode": "0644",
       "words": {
-        "too_large": "Custom option files must be at most 32 KiB.",
+        "too_large": "Custom option files must be at most 32 KiB.",
         "invalid": "Invalid custom options file.",
         "over_limit": "Custom option files exceed the editor size limit."
       },

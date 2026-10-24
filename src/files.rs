@@ -21,7 +21,7 @@ const SET: FileSet = FileSet {
     main: Some("/etc/dnsmasq.conf"),
     line: ("option", "options"),
     empty: "No custom option files",
-    too_large: "Custom option files must be at most 32 KiB of text.",
+    too_large: "Custom option files must be at most 32\u{202f}KiB of text.",
     placeholder: "10-local",
 };
 
