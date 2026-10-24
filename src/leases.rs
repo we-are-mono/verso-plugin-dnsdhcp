@@ -75,21 +75,19 @@ fn expiry_cell(expiry: format::Expiry) -> TableCell {
 fn row(model: &Dnsdhcp, lease: &Lease) -> TableRow {
     let network = model.network_of(&lease.ipv4);
     let reserved = model.reserved(&lease.mac);
-    let mut name = TableCell {
+    let name = TableCell {
         text: format::device_name(&lease.hostname, &lease.mac),
         muted: lease.hostname.is_empty(),
         ..TableCell::default()
     };
-    // Each row offers only the act that applies to it: a pinned device wears
-    // the pin; one that is not offers to pin it, which opens the reservation
-    // drawer where the row stands.
+    // Each row offers only the act that applies to it: a pinned device's
+    // address wears the pin; one that is not offers to pin it, which opens the
+    // reservation drawer where the row stands.
     let mut acts = vec![];
     let mut panel = String::new();
-    if reserved {
-        name.tag = "reserved".into();
-        name.tag_variant = "success".into();
-        name.tag_icon = "pin".into();
-    } else {
+    let mut address = page::address_cell(&lease.ipv4);
+    address.reserved = reserved && !lease.ipv4.is_empty();
+    if !reserved {
         panel = reserve_href(&lease.mac);
         acts.push(TableRowAct {
             icon: "pin".into(),
@@ -103,7 +101,7 @@ fn row(model: &Dnsdhcp, lease: &Lease) -> TableRow {
         cells: vec![
             name,
             page::network_cell(network),
-            page::address_cell(&lease.ipv4),
+            address,
             page::mono_cell(&lease.mac),
             expiry_cell(format::expiry(lease.expires_at)),
             TableCell {
@@ -156,8 +154,12 @@ mod tests {
     fn a_reserved_device_wears_the_pin_and_offers_nothing() {
         let rows = table_of(&fixture::leases())["rows"].clone();
         let nas = &rows[2];
-        assert_eq!(nas["cells"][0]["tag"], "reserved");
-        assert_eq!(nas["cells"][0]["tag_icon"], "pin");
+        // The pin is the address's, hung in its margin by the shell; the name
+        // carries no tag for it.
+        assert_eq!(nas["cells"][2]["reserved"], true);
+        assert!(nas["cells"][0].get("tag").is_none());
+        assert!(nas["cells"][0].get("tag_icon").is_none());
+        assert!(rows[0]["cells"][2].get("reserved").is_none());
         assert!(nas["cells"][5].get("actions").is_none());
         assert!(nas.get("panel").is_none());
     }
