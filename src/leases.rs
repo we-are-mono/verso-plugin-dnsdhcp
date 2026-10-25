@@ -8,7 +8,9 @@
 //! reservation drawer filled from the lease — the reservation is the object, and
 //! it lives in its drawer (ADR-005 §8). A device already pinned says so instead.
 
-use verso_plugin::{ColumnWidth, Table, TableCell, TableColumn, TableRow, TableRowAct, Widget};
+use verso_plugin::{
+    text_cell, ColumnWidth, Table, TableCell, TableColumn, TableRow, TableRowAct, Widget,
+};
 
 use crate::format;
 use crate::live::{Lease, Leases};
@@ -30,7 +32,7 @@ pub fn table(model: &Dnsdhcp, leases: &Leases) -> Widget {
     Widget::Table(Table {
         columns: [
             ("Device", "name", ColumnWidth::Name),
-            ("Network", "entity", ColumnWidth::Short),
+            ("Network", "mono", ColumnWidth::Short),
             ("Address", "mono", ColumnWidth::Address),
             ("MAC", "mono", ColumnWidth::Address),
             ("Expires in", "runtime", ColumnWidth::Grow),
@@ -100,7 +102,7 @@ fn row(model: &Dnsdhcp, lease: &Lease) -> TableRow {
         id: lease.mac.clone(),
         cells: vec![
             name,
-            page::network_cell(network),
+            text_cell(network),
             address,
             page::mono_cell(&lease.mac),
             expiry_cell(format::expiry(lease.expires_at)),
@@ -129,13 +131,14 @@ mod tests {
     fn a_lease_states_the_device_its_network_and_when_it_runs_out() {
         let rows = table_of(&fixture::leases())["rows"].clone();
         assert_eq!(rows[0]["cells"][0]["text"], "toms-iphone");
-        assert_eq!(rows[0]["cells"][1]["chips"][0]["label"], "lan");
+        assert_eq!(rows[0]["cells"][1]["text"], "lan");
+        assert!(rows[0]["cells"][1].get("chips").is_none());
         assert_eq!(rows[0]["cells"][2]["text"], "10.0.0.142");
         assert_eq!(rows[0]["cells"][3]["text"], "42:e6:ad:ff:b7:af");
         // A device that offered no name is called by its MAC, at the quieter step.
         assert_eq!(rows[1]["cells"][0]["text"], "Device 0e:57");
         assert_eq!(rows[1]["cells"][0]["muted"], true);
-        assert_eq!(rows[3]["cells"][1]["chips"][0]["label"], "guest");
+        assert_eq!(rows[3]["cells"][1]["text"], "guest");
     }
 
     #[test]

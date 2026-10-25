@@ -8,7 +8,7 @@
 //! thing on every listing; a page that spelled one of them differently would
 //! read as a different kind of thing.
 
-use verso_plugin::{TableCell, TableChip, Value, Widget};
+use verso_plugin::{TableCell, Value, Widget};
 
 use crate::format::EM_DASH;
 
@@ -111,23 +111,6 @@ pub fn uci_block(kind: &str, name: &str, options: &[(&str, Value)]) -> String {
         }
     }
     out
-}
-
-/// network_cell cites the network a row sits on, as the entity chip every
-/// listing cites a network with.
-pub fn network_cell(network: &str) -> TableCell {
-    TableCell {
-        chips: match network.is_empty() {
-            true => vec![],
-            false => vec![TableChip {
-                icon: "network".into(),
-                label: network.into(),
-                tone: "accent".into(),
-                ..TableChip::default()
-            }],
-        },
-        ..TableCell::default()
-    }
 }
 
 /// address_cell is a verbatim machine value the row is scanned for: promoted a

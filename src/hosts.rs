@@ -10,8 +10,8 @@
 //! form again. One set of controls draws all four.
 
 use verso_plugin::{
-    commit, commit_delete, commit_new, json, ColumnWidth, CommitOp, Envelope, Errors, Form, Map,
-    RowDrawer, Table, TableCell, TableColumn, TableRow, TableRowAct, Value, Widget,
+    commit, commit_delete, commit_new, json, text_cell, ColumnWidth, CommitOp, Envelope, Errors,
+    Form, Map, RowDrawer, Table, TableCell, TableColumn, TableRow, TableRowAct, Value, Widget,
 };
 
 use crate::form;
@@ -137,7 +137,7 @@ pub fn table(model: &Dnsdhcp, open: Option<(String, RowDrawer)>) -> Widget {
     Widget::Table(Table {
         columns: columns(&[
             ("Device", "name", ColumnWidth::Name),
-            ("Network", "entity", ColumnWidth::Short),
+            ("Network", "mono", ColumnWidth::Short),
             ("IPv4", "mono", ColumnWidth::Address),
             ("MAC", "mono", ColumnWidth::Address),
             ("IPv6 suffix", "mono", ColumnWidth::Grow),
@@ -160,7 +160,7 @@ fn row(model: &Dnsdhcp, host: &Host, drawer: Option<RowDrawer>) -> TableRow {
                 href: door.clone(),
                 ..TableCell::default()
             },
-            page::network_cell(network),
+            text_cell(network),
             page::address_cell(&host.ip),
             page::mono_cell(&host.mac),
             page::mono_cell(&host.hostid),
@@ -573,7 +573,8 @@ mod tests {
         // gives the row the edit pencil to that address, since its own act
         // only removes.
         assert_eq!(nas["cells"][0]["href"], nas["panel"]);
-        assert_eq!(nas["cells"][1]["chips"][0]["label"], "lan");
+        assert_eq!(nas["cells"][1]["text"], "lan");
+        assert!(nas["cells"][1].get("chips").is_none());
         assert_eq!(nas["cells"][2]["text"], "10.0.0.30");
         let remove = &nas["cells"][5]["actions"][0];
         assert_eq!(remove["icon"], "pin-off");
