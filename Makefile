@@ -11,9 +11,11 @@ NAME        := verso-plugin-$(ID)
 DESCRIPTION := Verso DNS and DHCP — dnsmasq and odhcpd, as pages
 # Useful only where dnsmasq serves the network, and only beside the shell it
 # plugs into. Its root half runs through the command registry and the file
-# families declared by plugins, and a reserved lease's address is pinned by the
-# shell's table; the verso it depends on is the first that draws that pin.
-DEPENDS     := verso>=0.9.0-r153 dnsmasq
+# families declared by plugins, a reserved lease's address is pinned by the
+# shell's table, a blank reservation rides its listing as a drawer-only row and
+# the Reservations card's add opens it as a place of the page; the verso it
+# depends on is the first that draws all three.
+DEPENDS     := verso>=0.10.0-r3 dnsmasq
 
 CARGO    ?= $(if $(wildcard $(HOME)/.cargo/bin/cargo),$(HOME)/.cargo/bin/cargo,cargo)
 BUILDDIR := build
