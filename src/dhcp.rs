@@ -469,8 +469,9 @@ impl State {
             .into_iter()
             .map(|free| SelectOption::new(free, free))
             .collect();
-        let choice =
-            form::select_field("network", "Network", network, networks, errors).writes("interface");
+        let choice = form::select_field("network", "Network", network, networks, errors)
+            .writes("interface")
+            .typed("uciname");
         self.pool_drawer("New DHCP server", Some(choice), network, pool, errors)
     }
 
@@ -1300,6 +1301,8 @@ ra=server&dhcpv6=server&ra_slaac=1";
         assert_eq!(drawer["open"], true);
         let network = control(drawer, "network");
         assert_eq!(network["value"], "iot");
+        // A network's name is a machine string, read in mono.
+        assert_eq!(network["datatype"], "uciname");
         let offered: Vec<Json> = network["options"]
             .as_array()
             .unwrap()

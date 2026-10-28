@@ -12,10 +12,11 @@ DESCRIPTION := Verso DNS and DHCP — dnsmasq and odhcpd, as pages
 # Useful only where dnsmasq serves the network, and only beside the shell it
 # plugs into. Its root half runs through the command registry and the file
 # families declared by plugins, a reserved lease's address is pinned by the
-# shell's table, a blank reservation rides its listing as a drawer-only row and
-# the Reservations card's add opens it as a place of the page; the verso it
-# depends on is the first that draws all three.
-DEPENDS     := verso>=0.10.0-r3 dnsmasq
+# shell's table, a blank reservation rides its listing as a drawer-only row,
+# the Reservations card's add opens it as a place of the page, and a new
+# server's network is typed `uciname`, which an older shell refuses as unknown;
+# the verso it depends on is the first that does all four.
+DEPENDS     := verso>=0.10.0-r7 dnsmasq
 
 CARGO    ?= $(if $(wildcard $(HOME)/.cargo/bin/cargo),$(HOME)/.cargo/bin/cargo,cargo)
 BUILDDIR := build
