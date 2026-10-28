@@ -29,8 +29,12 @@ pub const SERVERS: &str = "dns/servers";
 /// the one `open` names a reservation not made yet by.
 pub const NEW: &str = "new";
 
+/// NEW_SERVER is the name `open` asks for a DHCP server not made yet by. A uci
+/// name never holds a hyphen, so it is never a network's or a reservation's.
+pub const NEW_SERVER: &str = "new-server";
+
 /// OPEN is the query a DHCP page address names its open drawer by: a server's
-/// network, a reservation's section or its device's MAC, or `new`.
+/// network, a reservation's section or its device's MAC, `new` or `new-server`.
 pub const OPEN: &str = "open";
 
 /// PANEL marks a submission as a drawer's own, told apart from the page's

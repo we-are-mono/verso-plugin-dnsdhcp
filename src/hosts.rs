@@ -119,10 +119,16 @@ pub fn find<'a>(model: &'a Dnsdhcp, key: &str) -> Option<&'a Options> {
 }
 
 /// table is the reservations listing. Each row opens its own drawer where it
-/// stands, and the row `open` names arrives with that drawer already open.
-pub fn table(model: &Dnsdhcp, open: Option<(String, RowDrawer)>) -> Widget {
+/// stands, and the row `open` names arrives with that drawer already open. A
+/// blank reservation's drawer rides the listing it will land in, as a row that
+/// is only that drawer.
+pub fn table(
+    model: &Dnsdhcp,
+    open: Option<(String, RowDrawer)>,
+    blank: Option<RowDrawer>,
+) -> Widget {
     let mut open = open;
-    let rows = model
+    let mut rows: Vec<TableRow> = model
         .hosts
         .iter()
         .map(|options| {
@@ -134,6 +140,10 @@ pub fn table(model: &Dnsdhcp, open: Option<(String, RowDrawer)>) -> Widget {
             row(model, &host, drawer)
         })
         .collect();
+    rows.extend(blank.map(|drawer| TableRow {
+        drawer: Some(drawer),
+        ..TableRow::default()
+    }));
     Widget::Table(Table {
         columns: columns(&[
             ("Device", "name", ColumnWidth::Name),
@@ -556,7 +566,7 @@ mod tests {
     }
 
     fn rows(model: &Dnsdhcp) -> Vec<Json> {
-        json_of!(table(model, None))["rows"]
+        json_of!(table(model, None, None))["rows"]
             .as_array()
             .expect("rows")
             .clone()
@@ -594,7 +604,8 @@ mod tests {
         let model = fixture::dnsdhcp();
         let host = Host::read(find(&model, "host_thermo").expect("host"));
         let open = drawer(Some("host_thermo"), &host, &Errors::default());
-        let rows = json_of!(table(&model, Some(("host_thermo".into(), open))))["rows"].clone();
+        let rows =
+            json_of!(table(&model, Some(("host_thermo".into(), open)), None))["rows"].clone();
         assert!(rows[0].get("drawer").is_none());
         assert_eq!(rows[1]["drawer"]["open"], true);
         assert_eq!(rows[1]["drawer"]["title"], "thermo-attic");

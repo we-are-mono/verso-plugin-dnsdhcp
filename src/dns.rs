@@ -295,6 +295,7 @@ fn missing(label: &str, desc: &str, package: &str) -> Vec<Widget> {
             style: "secondary".into(),
             icon: "download".into(),
             panel: true,
+            place: false,
         });
     }
     vec![notice]

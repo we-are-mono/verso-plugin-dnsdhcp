@@ -10,7 +10,7 @@
 //! they are edited on the page itself.
 
 use verso_plugin::{
-    commit, commit_new, dhcp, json, ColumnWidth, CommitOp, Envelope, Errors, Form, HeadingAct,
+    commit, commit_delete, commit_new, dhcp, json, ColumnWidth, CommitOp, Envelope, Errors, Form, HeadingAct,
     List, Map, Request, RowDrawer, SelectOption, Switch, Table, TableCell, TableColumn, TableRow,
     TableRowAct, Tone, Value, Widget,
 };
@@ -21,7 +21,7 @@ use crate::hosts;
 use crate::leases::{self, RESERVE};
 use crate::live::Leases;
 use crate::model::{Dnsdhcp, Options, CONFIG, DAEMON_TYPE};
-use crate::page::{self, NEW, OPEN, PANEL};
+use crate::page::{self, NEW, NEW_SERVER, OPEN, PANEL};
 
 /// TITLE is the page's name, which is also its nav label.
 const TITLE: &str = "DHCP";
@@ -59,6 +59,7 @@ pub fn get(r: &Request) -> Envelope {
     let open = match key.trim() {
         "" => Open::Nothing,
         NEW => Open::Reservation(None, hosts::blank(&state.leases, &r.query.get(RESERVE))),
+        NEW_SERVER => state.blank_server(None),
         key => state.opened(key),
     };
     state.render(open)
@@ -68,6 +69,10 @@ pub fn get(r: &Request) -> Envelope {
 /// settings form. Anything else is something this page did not draw.
 pub fn post(r: &Request, f: &Form) -> Envelope {
     let state = State::read(r);
+    let server = f.get(REMOVE_SERVER);
+    if !server.trim().is_empty() {
+        return state.remove_server(server.trim());
+    }
     let removal = f.get(hosts::REMOVE);
     if !removal.trim().is_empty() {
         return match hosts::remove(&state.model, removal.trim()) {
@@ -91,18 +96,34 @@ pub fn post(r: &Request, f: &Form) -> Envelope {
 
 const GONE: &str = "That isn’t in the config any more, so there was nothing to save.";
 
-/// new_reservation is the page's act: reservations are the one thing this page
-/// makes. Making one is editing one that does not exist yet, so it opens the
-/// reservation's own panel, carrying it blank — the one drawer that belongs to
-/// no row yet — when an address (New, or a lease's Reserve) asks for one.
-fn new_reservation(blank: Option<RowDrawer>) -> HeadingAct {
+/// REMOVE_SERVER names the server a row's confirmed removal takes away, apart
+/// from a reservation's.
+const REMOVE_SERVER: &str = "_remove_server";
+
+/// new_server is the page's act: the page is about servers. Making one is
+/// editing one that does not exist yet, so it opens the server's own panel,
+/// carrying it blank when an address asks for one.
+fn new_server(blank: Option<RowDrawer>) -> HeadingAct {
     HeadingAct {
-        label: "Add reservation".into(),
-        href: page::open_href(NEW),
+        label: "Add DHCP server".into(),
+        href: page::open_href(NEW_SERVER),
         icon: "plus".into(),
         opens_panel: true,
         drawer: blank,
         ..Default::default()
+    }
+}
+
+/// new_reservation is the Reservations card's act, on its header: a blank
+/// reservation is a place of this page, so the address follows its drawer.
+fn new_reservation() -> Widget {
+    Widget::Link {
+        label: "Add reservation".into(),
+        icon: "plus".into(),
+        href: page::open_href(NEW),
+        style: "act".into(),
+        panel: true,
+        place: true,
     }
 }
 
@@ -118,6 +139,7 @@ struct State {
 enum Open {
     Nothing,
     Server(String, RowDrawer),
+    NewServer(RowDrawer),
     Reservation(Option<String>, RowDrawer),
 }
 
@@ -130,16 +152,45 @@ impl State {
         }
     }
 
-    /// opened is the drawer an address names: a server by its network, else a
-    /// reservation by its section or its device's MAC. A name that is neither
-    /// opens nothing — a stale link lands on the page.
+    /// has_server says whether a network has a DHCP server: a `config dhcp`
+    /// section for it on a network with an address of its own, or one set to
+    /// hand out addresses. The stock uplink section, which says not to serve
+    /// on a network that learns its address, is no server.
+    fn has_server(&self, network: &str) -> bool {
+        self.model.pool(network).is_some_and(|options| {
+            self.model.subnet(network).is_some() || Pool::read(Some(options)).serve
+        })
+    }
+
+    /// free is the networks that could take a server and have none: each one
+    /// with an address of its own and no section, in config order.
+    fn free(&self) -> Vec<&str> {
+        self.model
+            .interfaces
+            .iter()
+            .map(|interface| interface.name.as_str())
+            .filter(|network| {
+                *network != "loopback"
+                    && self.model.subnet(network).is_some()
+                    && self.model.pool(network).is_none()
+            })
+            .collect()
+    }
+
+    /// opened is the drawer an address names: a server by its network, a
+    /// network that could take one by the blank server with it chosen, else a
+    /// reservation by its section or its device's MAC. A name that is none of
+    /// these opens nothing — a stale link lands on the page.
     fn opened(&self, key: &str) -> Open {
-        if self.servers.iter().any(|server| server.network == key) {
+        if self.has_server(key) {
             let pool = Pool::read(self.model.pool(key));
             return Open::Server(
                 key.into(),
                 self.server_drawer(key, &pool, &Errors::default()),
             );
+        }
+        if self.free().contains(&key) {
+            return self.blank_server(Some(key));
         }
         match hosts::find(&self.model, key) {
             Some(options) => {
@@ -161,7 +212,10 @@ impl State {
             let saved = hosts::submit(None, f);
             return self.staged(Open::Reservation(None, saved.drawer), saved.commit);
         }
-        if self.servers.iter().any(|server| server.network == key) {
+        if key == NEW_SERVER || self.free().contains(&key) {
+            return self.save_new_server(f);
+        }
+        if self.has_server(key) {
             let pool = Pool::submitted(f);
             let errors = self.validate(key, &pool);
             let drawer = self.server_drawer(key, &pool, &errors);
@@ -174,6 +228,54 @@ impl State {
                 let saved = hosts::submit(Some(&section), f);
                 self.staged(Open::Reservation(Some(section), saved.drawer), saved.commit)
             }
+            None => self.render(Open::Nothing).with_notice(Tone::Danger, GONE),
+        }
+    }
+
+    /// blank_server is the drawer that makes a server, with `network` chosen
+    /// or else the first that could take one. With none free it opens nothing.
+    fn blank_server(&self, network: Option<&str>) -> Open {
+        let free = self.free();
+        match network.or(free.first().copied()) {
+            Some(network) => Open::NewServer(self.new_server_drawer(
+                network,
+                &Pool::blank(),
+                &Errors::default(),
+            )),
+            None => Open::Nothing,
+        }
+    }
+
+    /// save_new_server answers the blank server's save: the network it names
+    /// must be one that could take a server, and the pool is checked against it.
+    fn save_new_server(&self, f: &Form) -> Envelope {
+        let free = self.free();
+        if free.is_empty() {
+            return self.render(Open::Nothing).with_notice(Tone::Danger, GONE);
+        }
+        let network = f.get("network").trim().to_string();
+        let pool = Pool::submitted(f);
+        let errors = match free.contains(&network.as_str()) {
+            true => self.validate(&network, &pool),
+            false => {
+                let mut errors = Errors::default();
+                errors.field("network", "Choose a network that has no DHCP server yet.");
+                errors
+            }
+        };
+        let drawer = self.new_server_drawer(&network, &pool, &errors);
+        let commit = errors.is_empty().then(|| self.write(&network, &pool));
+        self.staged(Open::NewServer(drawer), commit)
+    }
+
+    /// remove_server answers a row's confirmed removal: the server's section
+    /// goes, and the network returns to the ones a server can be added to.
+    fn remove_server(&self, network: &str) -> Envelope {
+        match self.model.pool(network).filter(|_| self.has_server(network)) {
+            Some(options) => self
+                .render(Open::Nothing)
+                .with_notice(Tone::Success, "DHCP server removed.")
+                .with_commit(vec![commit_delete(CONFIG, &options.section)]),
             None => self.render(Open::Nothing).with_notice(Tone::Danger, GONE),
         }
     }
@@ -193,17 +295,28 @@ impl State {
     /// render_with draws the page with the drawer `open` names in front of it
     /// and the settings form carrying whatever its last save got wrong.
     fn render_with(&self, open: Open, settings: &Errors) -> Envelope {
-        let (server_open, host_open, blank) = match open {
-            Open::Nothing => (None, None, None),
-            Open::Server(network, drawer) => (Some((network, drawer)), None, None),
-            Open::Reservation(Some(section), drawer) => (None, Some((section, drawer)), None),
-            Open::Reservation(None, drawer) => (None, None, Some(drawer)),
-        };
-        Envelope::page(
+        let (mut server_open, mut new_server_open, mut host_open, mut blank) =
+            (None, None, None, None);
+        match open {
+            Open::Nothing => {}
+            Open::Server(network, drawer) => server_open = Some((network, drawer)),
+            Open::NewServer(drawer) => new_server_open = Some(drawer),
+            Open::Reservation(Some(section), drawer) => host_open = Some((section, drawer)),
+            Open::Reservation(None, drawer) => blank = Some(drawer),
+        }
+        let mut reservations = section(
+            "Reservations",
+            "",
+            hosts::table(&self.model, host_open, blank),
+        );
+        if let Widget::Section(verso_plugin::SectionWidget { control, .. }) = &mut reservations {
+            *control = Some(Box::new(new_reservation()));
+        }
+        let page = Envelope::page(
             TITLE,
             Widget::stack(vec![
                 section("Servers", "", self.servers_table(server_open)),
-                section("Reservations", "", hosts::table(&self.model, host_open)),
+                reservations,
                 section("Leases", "", leases::table(&self.model, &self.leases)),
                 section(
                     "Settings",
@@ -212,8 +325,12 @@ impl State {
                 ),
             ]),
         )
-        .with_act(new_reservation(blank))
-        .with_width("wide")
+        .with_width("wide");
+        // A server can be added while some network could take one.
+        match self.free().is_empty() {
+            true => page,
+            false => page.with_act(new_server(new_server_open)),
+        }
     }
 
     fn servers_table(&self, open: Option<(String, RowDrawer)>) -> Widget {
@@ -221,6 +338,7 @@ impl State {
         let rows = self
             .servers
             .iter()
+            .filter(|server| self.has_server(&server.network))
             .map(|server| {
                 let drawer = match &open {
                     Some((network, _)) if *network == server.network => open.take().map(|(_, d)| d),
@@ -247,9 +365,12 @@ impl State {
             })
             .collect(),
             rows,
-            empty_text: "No network has an address of its own to hand out from. Add one in \
-                         Interfaces."
-                .into(),
+            empty_text: match self.free().is_empty() {
+                true => "No network has an address of its own to hand out from. Add one in \
+                         Interfaces.",
+                false => "No network has a DHCP server yet. Add one with Add DHCP server.",
+            }
+            .into(),
             ..Default::default()
         })
     }
@@ -303,17 +424,33 @@ impl State {
                     ..TableCell::default()
                 },
                 TableCell {
-                    actions: vec![TableRowAct {
-                        icon: "square-pen".into(),
-                        title: "Edit".into(),
-                        href: door.clone(),
-                        ..TableRowAct::default()
-                    }],
+                    actions: vec![
+                        TableRowAct {
+                            icon: "square-pen".into(),
+                            title: "Edit".into(),
+                            href: door.clone(),
+                            ..TableRowAct::default()
+                        },
+                        TableRowAct {
+                            icon: "trash-2".into(),
+                            title: "Remove DHCP server".into(),
+                            name: REMOVE_SERVER.into(),
+                            value: network.clone(),
+                            confirm_title: "Remove the DHCP server on %s?".into(),
+                            confirm: "Devices on this network keep their addresses until their \
+                                      leases run out, then get none."
+                                .into(),
+                            confirm_cancel: "Keep DHCP server".into(),
+                            ..TableRowAct::default()
+                        },
+                    ],
                     ..TableCell::default()
                 },
             ],
             drawer,
             panel: door,
+            // A server kept off is a subject someone switched off.
+            muted: !pool.serve,
             ..TableRow::default()
         }
     }
@@ -321,15 +458,42 @@ impl State {
     /// server_drawer is one network's DHCP server: what the interface editor
     /// used to carry, plus how the network's IPv6 is announced. Save stages.
     fn server_drawer(&self, network: &str, pool: &Pool, errors: &Errors) -> RowDrawer {
+        self.pool_drawer(network, None, network, pool, errors)
+    }
+
+    /// new_server_drawer is a server not made yet: the same drawer, led by the
+    /// network it will serve, chosen among those that could take one.
+    fn new_server_drawer(&self, network: &str, pool: &Pool, errors: &Errors) -> RowDrawer {
+        let networks = self
+            .free()
+            .into_iter()
+            .map(|free| SelectOption::new(free, free))
+            .collect();
+        let choice =
+            form::select_field("network", "Network", network, networks, errors).writes("interface");
+        self.pool_drawer("New DHCP server", Some(choice), network, pool, errors)
+    }
+
+    /// pool_drawer is the drawer one server is read and written in, titled
+    /// `title`, with `lead` as its first field when it has one.
+    fn pool_drawer(
+        &self,
+        title: &str,
+        lead: Option<Widget>,
+        network: &str,
+        pool: &Pool,
+        errors: &Errors,
+    ) -> RowDrawer {
         let subnet = self.model.subnet(network);
-        let mut addresses = vec![checkbox(
+        let mut addresses: Vec<Widget> = lead.into_iter().collect();
+        addresses.push(checkbox(
             "serve",
             "Hand out addresses",
             "ignore",
             "",
             pool.serve,
             errors,
-        )];
+        ));
         if subnet.is_some() {
             addresses.push(
                 Widget::form_grid(
@@ -413,7 +577,7 @@ impl State {
             ),
         ];
         RowDrawer {
-            title: network.into(),
+            title: title.into(),
             closed: page::root_href(),
             open: true,
             children: vec![page::panel_form("Save DHCP server", fields).at(
@@ -657,6 +821,15 @@ struct Pool {
 }
 
 impl Pool {
+    /// blank is a server being made: handing out addresses, with the daemons'
+    /// own defaults.
+    fn blank() -> Pool {
+        Pool {
+            serve: true,
+            ..Pool::read(None)
+        }
+    }
+
     /// read takes a server off its section, or the server a network with no
     /// section would start as: off, with the daemons' own defaults.
     fn read(options: Option<&Options>) -> Pool {
@@ -845,6 +1018,45 @@ mod tests {
         serde_json::to_value(get(&request(query))).expect("serialize")
     }
 
+    /// request_with is a visit to a router whose config `edit` changed first.
+    fn request_with(query: &str, edit: impl FnOnce(&mut Json)) -> Request {
+        let mut snapshot: Json =
+            serde_json::from_str(include_str!("../testdata/snapshot.json")).expect("fixture");
+        edit(&mut snapshot);
+        Request {
+            snapshot: verso_plugin::Snapshot::from_value(snapshot),
+            ..request(query)
+        }
+    }
+
+    /// with_iot gives the router a network with an address of its own and no
+    /// server on it yet.
+    fn with_iot(snapshot: &mut Json) {
+        snapshot["network"]["iot"] = serde_json::json!({".name": "iot", ".type": "interface",
+            "proto": "static", "ipaddr": "10.0.30.1", "netmask": "255.255.255.0"});
+    }
+
+    fn page_of(r: &Request) -> Json {
+        serde_json::to_value(get(r)).expect("serialize")
+    }
+
+    fn answer_of(r: &Request, body: &str) -> Json {
+        serde_json::to_value(post(r, &Form::parse(body))).expect("serialize")
+    }
+
+    fn server_rows(page: &Json) -> Vec<Json> {
+        sections(page)[0]["children"][0]["rows"]
+            .as_array()
+            .unwrap()
+            .to_vec()
+    }
+
+    fn row_ids(rows: &[Json]) -> Vec<String> {
+        rows.iter()
+            .filter_map(|r| r["id"].as_str().map(String::from))
+            .collect()
+    }
+
     fn answer(query: &str, body: &str) -> Json {
         serde_json::to_value(post(&request(query), &Form::parse(body))).expect("serialize")
     }
@@ -925,15 +1137,59 @@ ra=server&dhcpv6=server&ra_slaac=1";
             .find(|r| r["id"] == "guest")
             .unwrap();
         assert_eq!(guest["cells"][1]["text"], "10.0.20.100 – 10.0.20.249");
-        // The uplink is a client here, and says nothing else.
-        let wan = rows
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|r| r["id"] == "wan")
-            .unwrap();
-        assert_eq!(wan["cells"][5]["text"], "Client — uplink");
-        assert_eq!(wan["cells"][1]["text"], "—");
+    }
+
+    #[test]
+    fn the_servers_card_lists_the_networks_that_have_a_server() {
+        // The stock uplink section says "do not serve here" on a network with
+        // no address of its own: it is no server. A network with an address
+        // and no section has no server either; "Add DHCP server" offers it.
+        let page = page_of(&request_with("", with_iot));
+        assert_eq!(row_ids(&server_rows(&page)), vec!["guest", "lan"]);
+        // A server switched off stays on the list, reading as off, its values
+        // intact.
+        let off = page_of(&request_with("", |s| {
+            s["dhcp"]["lan"]["ignore"] = Json::from("1");
+        }));
+        let rows = server_rows(&off);
+        let lan = rows.iter().find(|r| r["id"] == "lan").unwrap();
+        assert_eq!(lan["muted"], true);
+        assert_eq!(lan["cells"][5]["text"], "Off");
+        let guest = rows.iter().find(|r| r["id"] == "guest").unwrap();
+        assert!(guest.get("muted").is_none(), "{guest}");
+        // A section set to hand out addresses is a server, even on a network
+        // that cannot give it any; its state says why it does not run.
+        let misplaced = page_of(&request_with("", |s| {
+            s["dhcp"]["wan"]["ignore"] = Json::from("0");
+        }));
+        assert_eq!(
+            row_ids(&server_rows(&misplaced)),
+            vec!["guest", "lan", "wan"]
+        );
+    }
+
+    #[test]
+    fn a_router_with_no_server_says_where_one_is_made() {
+        let none = |s: &mut Json| {
+            let dhcp = s["dhcp"].as_object_mut().unwrap();
+            dhcp.retain(|_, section| section[".type"] != "dhcp");
+        };
+        let empty = &sections(&page_of(&request_with("", none)))[0]["children"][0];
+        assert_eq!(empty["rows"], serde_json::json!([]));
+        assert_eq!(
+            empty["empty_text"],
+            "No network has a DHCP server yet. Add one with Add DHCP server."
+        );
+        // With no network that can take one, the way to one is a network.
+        let nowhere = page_of(&request_with("", |s| {
+            none(s);
+            let network = s["network"].as_object_mut().unwrap();
+            network.retain(|name, _| name == "wan" || name == "loopback");
+        }));
+        assert_eq!(
+            sections(&nowhere)[0]["children"][0]["empty_text"],
+            "No network has an address of its own to hand out from. Add one in Interfaces."
+        );
     }
 
     #[test]
@@ -1016,37 +1272,125 @@ ra=server&dhcpv6=server&ra_slaac=1";
                 "{body}: {field} carries no error"
             );
         }
-        // The uplink has no address of its own to hand out from.
+        // The uplink has no server to save, and no address to hand out from.
         let uplink = answer(
             "open=wan",
             "_panel=1&serve=1&leasetime=8h&ra=disabled&dhcpv6=disabled",
         );
         assert!(uplink.get("commit").is_none());
-        assert!(!control(&open_drawer(&uplink), "serve")["error"]
+        assert!(find(&uplink, &|v| v["open"] == true).is_none());
+    }
+
+    #[test]
+    fn the_pages_act_makes_a_server_while_a_network_can_take_one() {
+        let page = page_of(&request_with("", with_iot));
+        assert_eq!(page["act"]["label"], "Add DHCP server");
+        assert_eq!(page["act"]["href"], "/plugins/dnsdhcp/?open=new-server");
+        assert_eq!(page["act"]["icon"], "plus");
+        assert_eq!(page["act"]["opens_panel"], true);
+        // Every network with an address of its own already has a server.
+        assert!(read("").get("act").is_none(), "{}", read(""));
+    }
+
+    #[test]
+    fn a_blank_server_starts_from_the_network_it_serves() {
+        let blank = page_of(&request_with("open=new-server", with_iot));
+        let drawer = &blank["act"]["drawer"];
+        assert_eq!(drawer["title"], "New DHCP server");
+        assert_eq!(drawer["open"], true);
+        let network = control(drawer, "network");
+        assert_eq!(network["value"], "iot");
+        let offered: Vec<Json> = network["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| o["value"].clone())
+            .collect();
+        assert_eq!(offered, vec![Json::from("iot")]);
+        // The Network choice leads; the server's own fields follow it.
+        let first = find(drawer, &|v| v.get("name").is_some() && v.get("type").is_some()).unwrap();
+        assert_eq!(first["name"], "network");
+        assert_eq!(control(drawer, "serve")["on"], true);
+        assert_eq!(control(drawer, "start")["value"], "100");
+        // An address naming a network with no server opens the same drawer
+        // with that network chosen.
+        let iot = page_of(&request_with("open=iot", with_iot));
+        assert_eq!(iot["act"]["drawer"]["title"], "New DHCP server");
+        assert_eq!(control(&iot["act"]["drawer"], "network")["value"], "iot");
+        // A stale name, or a blank server with nowhere to serve, opens nothing.
+        for query in ["open=nosuch", "open=new-server"] {
+            assert!(find(&read(query), &|v| v["open"] == true).is_none(), "{query}");
+        }
+    }
+
+    #[test]
+    fn saving_a_new_server_stages_a_section_named_after_its_network() {
+        let r = request_with("open=new-server", with_iot);
+        let saved = answer_of(
+            &r,
+            "_panel=1&network=iot&serve=1&start=100&limit=150&leasetime=12h&ra=disabled&\
+             dhcpv6=disabled&ra_slaac=1",
+        );
+        let op = &saved["commit"][0];
+        assert_eq!(op["config"], "dhcp");
+        assert_eq!(op["type"], "dhcp");
+        assert_eq!(op["section"], "iot");
+        assert_eq!(op["values"]["interface"], "iot");
+        assert_eq!(op["values"]["start"], "100");
+        // The address that chose the network saves the same way.
+        let chosen = answer_of(
+            &request_with("open=iot", with_iot),
+            "_panel=1&network=iot&serve=1&start=100&limit=150&leasetime=12h&ra=disabled&\
+             dhcpv6=disabled&ra_slaac=1",
+        );
+        assert_eq!(chosen["commit"][0]["section"], "iot");
+        // A network that already has a server is refused on the Network field.
+        let taken = answer_of(
+            &r,
+            "_panel=1&network=lan&serve=1&start=100&limit=150&leasetime=12h&ra=disabled&\
+             dhcpv6=disabled&ra_slaac=1",
+        );
+        assert!(taken.get("commit").is_none(), "{taken}");
+        assert!(!control(&open_drawer(&taken), "network")["error"]
+            .as_str()
+            .unwrap_or("")
+            .is_empty());
+        // The pool is checked against the network chosen.
+        let outside = answer_of(
+            &r,
+            "_panel=1&network=iot&serve=1&start=250&limit=100&leasetime=12h&ra=disabled&\
+             dhcpv6=disabled",
+        );
+        assert!(outside.get("commit").is_none());
+        assert!(!control(&open_drawer(&outside), "start")["error"]
             .as_str()
             .unwrap_or("")
             .is_empty());
     }
 
     #[test]
-    fn a_network_with_no_section_gets_one_named_after_it() {
-        let mut r = request("open=lab");
-        r.snapshot = verso_plugin::Snapshot::from_value(serde_json::json!({
-            "network": {"lab": {".name": "lab", ".type": "interface", "proto": "static",
-                                "ipaddr": "10.9.0.1", "netmask": "255.255.255.0"}},
-            "dhcp": {}
-        }));
-        let page = serde_json::to_value(get(&r)).unwrap();
-        assert_eq!(control(&open_drawer(&page), "serve")["on"], Json::Null);
-        let saved = serde_json::to_value(post(
-            &r,
-            &Form::parse("_panel=1&serve=1&start=100&limit=50&leasetime=12h&ra=disabled&dhcpv6=disabled&ra_slaac=1"),
-        ))
-        .unwrap();
-        let op = &saved["commit"][0];
-        assert_eq!(op["section"], "lab");
-        assert_eq!(op["type"], "dhcp");
-        assert_eq!(op["values"]["interface"], "lab");
+    fn a_server_is_removed_from_its_row() {
+        let rows = server_rows(&read(""));
+        let lan = rows.iter().find(|r| r["id"] == "lan").unwrap();
+        let acts = lan["cells"][6]["actions"].as_array().unwrap();
+        let remove = acts.iter().find(|a| a["name"] == "_remove_server").unwrap();
+        assert_eq!(remove["value"], "lan");
+        assert_eq!(remove["title"], "Remove DHCP server");
+        assert_eq!(remove["confirm_title"], "Remove the DHCP server on %s?");
+        assert_eq!(
+            remove["confirm"],
+            "Devices on this network keep their addresses until their leases run out, then get none."
+        );
+        assert_eq!(remove["confirm_cancel"], "Keep DHCP server");
+        let removed = answer("", "_remove_server=lan");
+        assert_eq!(
+            removed["commit"][0],
+            serde_json::json!({"config": "dhcp", "section": "lan", "delete": true})
+        );
+        assert_eq!(removed["notice"]["text"], "DHCP server removed.");
+        let gone = answer("", "_remove_server=nosuch");
+        assert!(gone.get("commit").is_none());
+        assert_eq!(gone["notice"]["text"], GONE);
     }
 
     #[test]
@@ -1088,26 +1432,45 @@ ra=server&dhcpv6=server&ra_slaac=1";
     }
 
     #[test]
-    fn new_reservation_is_the_pages_act_and_carries_the_blank_one() {
-        // Reservations are the one thing this page makes, so making one is the
-        // page's act, on its heading line — said once, not again over the
-        // Reservations section. A still page is scrolled and found in with the
-        // browser's own find, so nothing narrows it.
-        let page = read("");
-        assert_eq!(page["act"]["label"], "Add reservation");
-        assert_eq!(page["act"]["href"], "/plugins/dnsdhcp/?open=new");
-        assert_eq!(page["act"]["opens_panel"], true);
+    fn a_reservation_is_made_from_the_reservations_card() {
+        // The heading line makes what the page is about, a server; the
+        // Reservations card makes reservations, on its own header. A still page
+        // is scrolled and found in with the browser's own find, so nothing
+        // narrows it.
+        let page = page_of(&request_with("", with_iot));
+        assert_eq!(page["act"]["label"], "Add DHCP server");
+        assert_eq!(
+            sections(&page)[1]["control"],
+            serde_json::json!({"type": "link", "label": "Add reservation", "icon": "plus",
+                "href": "/plugins/dnsdhcp/?open=new", "style": "act", "panel": true, "place": true})
+        );
         assert!(
             find(&page, &|v| v["type"] == "actionbar").is_none(),
             "{page}"
         );
-        assert!(find(&page, &|v| v["label"] == "Add reservation"
-            && v["type"] == "link")
-        .is_none());
-        // An address asking for a new one arrives with its panel open.
-        assert_eq!(
-            read("open=new")["act"]["drawer"]["title"],
-            "New reservation"
-        );
+    }
+
+    #[test]
+    fn a_blank_reservation_rides_its_listing() {
+        // The page has no heading act here: every network has a server. The
+        // blank reservation still opens, riding the listing it will land in.
+        let page = read("open=new&reserve=42:e6:ad:ff:b7:af");
+        assert!(page.get("act").is_none(), "{page}");
+        let rows = sections(&page)[1]["children"][0]["rows"]
+            .as_array()
+            .unwrap()
+            .to_vec();
+        let blank = rows.last().unwrap();
+        assert!(blank.get("cells").is_none_or(|c| c == &serde_json::json!([])), "{blank}");
+        assert_eq!(blank["drawer"]["title"], "New reservation");
+        assert_eq!(blank["drawer"]["open"], true);
+        assert_eq!(control(&blank["drawer"], "ip")["value"], "10.0.0.142");
+        // A plain visit carries no blank.
+        let plain = sections(&read(""))[1]["children"][0]["rows"].clone();
+        assert!(plain
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row.get("drawer").is_none()));
     }
 }
