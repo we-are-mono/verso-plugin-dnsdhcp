@@ -152,28 +152,21 @@ impl State {
         }
     }
 
-    /// has_server says whether a network has a DHCP server: a `config dhcp`
-    /// section for it on a network with an address of its own, or one set to
-    /// hand out addresses. The stock uplink section, which says not to serve
-    /// on a network that learns its address, is no server.
+    /// has_server says whether a network has a DHCP server, by the SDK's one
+    /// meaning of it (`dhcp::Server::exists`), which Interfaces reads too.
     fn has_server(&self, network: &str) -> bool {
-        self.model.pool(network).is_some_and(|options| {
-            self.model.subnet(network).is_some() || Pool::read(Some(options)).serve
-        })
+        self.servers
+            .iter()
+            .any(|server| server.network == network && server.exists())
     }
 
-    /// free is the networks that could take a server and have none: each one
-    /// with an address of its own and no section, in config order.
+    /// free is the networks that could take a server and have none
+    /// (`dhcp::Server::can_be_added`).
     fn free(&self) -> Vec<&str> {
-        self.model
-            .interfaces
+        self.servers
             .iter()
-            .map(|interface| interface.name.as_str())
-            .filter(|network| {
-                *network != "loopback"
-                    && self.model.subnet(network).is_some()
-                    && self.model.pool(network).is_none()
-            })
+            .filter(|server| server.can_be_added())
+            .map(|server| server.network.as_str())
             .collect()
     }
 
@@ -1167,6 +1160,34 @@ ra=server&dhcpv6=server&ra_slaac=1";
             row_ids(&server_rows(&misplaced)),
             vec!["guest", "lan", "wan"]
         );
+    }
+
+    #[test]
+    fn the_page_reads_the_sdks_meaning_of_a_server() {
+        // Interfaces reads the same rule, so a network listed here wears the
+        // DHCP chip there, and one offered here offers a server there too.
+        let r = request_with("", with_iot);
+        let servers = dhcp::servers(&r.snapshot, &r.ubus);
+        let page = page_of(&r);
+        let listed: Vec<String> = servers
+            .iter()
+            .filter(|s| s.exists())
+            .map(|s| s.network.clone())
+            .collect();
+        assert_eq!(row_ids(&server_rows(&page)), listed);
+        let offered: Vec<String> = servers
+            .iter()
+            .filter(|s| s.can_be_added())
+            .map(|s| s.network.clone())
+            .collect();
+        let blank = page_of(&request_with("open=new-server", with_iot));
+        let choices: Vec<String> = control(&blank["act"]["drawer"], "network")["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| o["value"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(choices, offered);
     }
 
     #[test]
